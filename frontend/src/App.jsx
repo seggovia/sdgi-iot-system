@@ -23,11 +23,12 @@ import './App.css';
 function App() {
   // ==================== ESTADOS PRINCIPALES ====================
   const [notificacionActiva, setNotificacionActiva] = useState(null);
-  // Función helper para mostrar notificaciones
+
   const mostrarNotificacion = (mensaje, tipo = 'success') => {
     setNotificacionActiva({ mensaje, tipo });
     setTimeout(() => setNotificacionActiva(null), 3000);
   };
+
   // Configuración del sistema
   const [configuracion, setConfiguracion] = useState({
     umbralGas: 60,
@@ -41,7 +42,6 @@ function App() {
     modoSimulacion: false
   });
 
-
   // Configuración global
   const [configGlobal, setConfigGlobal] = useState({
     modoProgramado: false,
@@ -51,17 +51,22 @@ function App() {
     sensibilidadNoche: 100
   });
 
-  // Datos en tiempo real
+  // Datos en tiempo real - MODIFICADO PARA 2 SENSORES
   const [ultimaLectura, setUltimaLectura] = useState(null);
   const [lecturas, setLecturas] = useState([]);
   const [dispositivo, setDispositivo] = useState(null);
-  const [gasDetectado, setGasDetectado] = useState(false);
+
+  // NUEVO: Estados separados para cada piso
+  const [piso1Alerta, setPiso1Alerta] = useState(false);
+  const [piso2Alerta, setPiso2Alerta] = useState(false);
   const [notificaciones, setNotificaciones] = useState([]);
 
   // Estadísticas
   const [estadisticas, setEstadisticas] = useState({
     totalAlertas: 0,
-    tiempoTotalAlerta: 0
+    tiempoTotalAlerta: 0,
+    alertasPiso1: 0,
+    alertasPiso2: 0
   });
 
   // Estados de UI
@@ -69,7 +74,8 @@ function App() {
   const [editandoGlobal, setEditandoGlobal] = useState(false);
   const [configTemp, setConfigTemp] = useState({});
   const [configGlobalTemp, setConfigGlobalTemp] = useState({});
-  const [vistaActual, setVistaActual] = useState('general'); // 'general', 'config', 'stats'
+  const [vistaActual, setVistaActual] = useState('general');
+
   // ==================== EFECTOS (Firebase Listeners) ====================
 
   // Escuchar configuración del sistema
@@ -96,7 +102,7 @@ function App() {
     return () => unsubscribe();
   }, []);
 
-  // Escuchar lecturas históricas
+  // MODIFICADO: Escuchar lecturas históricas (ahora con 2 sensores)
   useEffect(() => {
     const q = query(collection(db, 'lecturas'), orderBy('timestamp', 'desc'), limit(50));
     const unsubscribe = onSnapshot(q, (snapshot) => {
@@ -110,10 +116,14 @@ function App() {
         });
       });
       setLecturas(lecturasData.reverse());
+
       if (lecturasData.length > 0) {
         const ultima = lecturasData[lecturasData.length - 1];
         setUltimaLectura(ultima);
-        setGasDetectado(ultima.gasDetectado || false);
+
+        // NUEVO: Detectar alertas por piso
+        setPiso1Alerta(ultima.sensor1Alerta || false);
+        setPiso2Alerta(ultima.sensor2Alerta || false);
       }
     });
     return () => unsubscribe();
@@ -176,10 +186,10 @@ function App() {
     try {
       await updateDoc(doc(db, 'configuracion', 'global'), configGlobalTemp);
       setEditandoGlobal(false);
-      alert('✅ Configuración global actualizada');
+      mostrarNotificacion('Configuración global actualizada', 'success');
     } catch (error) {
       console.error('Error:', error);
-      alert('❌ Error al guardar');
+      mostrarNotificacion('Error al guardar', 'error');
     }
   };
 
@@ -190,8 +200,13 @@ function App() {
       await updateDoc(doc(db, 'configuracion', 'sistema'), {
         servoAbierto: nuevoEstado
       });
+      mostrarNotificacion(
+        nuevoEstado ? 'Puerta abierta' : 'Puerta cerrada',
+        'info'
+      );
     } catch (error) {
       console.error('Error al controlar servo:', error);
+      mostrarNotificacion('Error al controlar puerta', 'error');
     }
   };
 
@@ -211,10 +226,11 @@ function App() {
     }
   };
 
-  // Datos para el gráfico
+  // MODIFICADO: Datos para el gráfico (ahora con ambos sensores)
   const datosGrafico = lecturas.slice(-30).map((lectura, index) => ({
     nombre: `#${index + 1}`,
-    valor: lectura.valorGas,
+    sensor1: lectura.valorSensor1 || lectura.valorGas || 0,
+    sensor2: lectura.valorSensor2 || 0,
     umbral: configuracion.umbralGas,
     tiempo: lectura.timestamp.toLocaleTimeString()
   }));
@@ -223,7 +239,6 @@ function App() {
   const porcentajeAlerta = estadisticas.totalAlertas > 0
     ? ((estadisticas.tiempoTotalAlerta / (estadisticas.totalAlertas * 60)) * 100).toFixed(1)
     : 0;
-
   // ==================== RENDER ====================
   return (
     <div className="app">
@@ -268,11 +283,16 @@ function App() {
         </div>
       </header>
 
-      {/* Alerta de gas */}
-      {gasDetectado && (
+      {/* MODIFICADO: Alerta de gas con información de ambos pisos */}
+      {(piso1Alerta || piso2Alerta) && (
         <div className="alerta-gas">
           <AlertTriangle size={24} />
-          <span>⚠️ GAS DETECTADO EN EL EDIFICIO - Valor: {ultimaLectura?.valorGas}</span>
+          <span>
+            ⚠️ GAS DETECTADO -
+            {piso1Alerta && ` PISO 1 (${ultimaLectura?.valorSensor1 || 0})`}
+            {piso1Alerta && piso2Alerta && ' | '}
+            {piso2Alerta && ` PISO 2 (${ultimaLectura?.valorSensor2 || 0})`}
+          </span>
           <AlertTriangle size={24} />
         </div>
       )}
@@ -281,7 +301,7 @@ function App() {
         {/* VISTA GENERAL */}
         {vistaActual === 'general' && (
           <>
-            {/* Edificio 3D */}
+            {/* Edificio 3D - MODIFICADO con alertas por piso */}
             <div className="edificio-container">
               <h2 className="section-title">
                 <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -300,23 +320,40 @@ function App() {
                 <span>Edificio en Tiempo Real</span>
               </h2>
               <Edificio3D
-                piso1Alerta={gasDetectado}
-                piso2Alerta={gasDetectado}
+                piso1Alerta={piso1Alerta}
+                piso2Alerta={piso2Alerta}
                 puertaAbierta={configuracion.servoAbierto}
               />
             </div>
 
-            {/* Tarjetas de información */}
+            {/* MODIFICADO: Tarjetas de información - Ahora con 4 cards para 2 sensores */}
+            {/* MODIFICADO: Tarjetas de información - 2x2 grid */}
+            {/* MODIFICADO: Tarjetas de información - 2x2 grid */}
             <div className="cards">
-              <div className="card">
+              <div className={`card ${piso1Alerta ? 'alerta' : ''}`}>
                 <div className="card-header">
                   <Activity size={20} />
-                  <h3>Lectura Actual</h3>
+                  <h3>Sensor Piso 1</h3>
                 </div>
                 <div className="card-value">
-                  {ultimaLectura ? ultimaLectura.valorGas : '---'}
+                  {ultimaLectura ? (ultimaLectura.valorSensor1 || ultimaLectura.valorGas || 0) : '---'}
                 </div>
-                <div className="card-label">Valor del sensor MQ-2</div>
+                <div className="card-label">
+                  {piso1Alerta ? '🔴 ALERTA ACTIVA' : '🟢 Normal'}
+                </div>
+              </div>
+
+              <div className={`card ${piso2Alerta ? 'alerta' : ''}`}>
+                <div className="card-header">
+                  <Activity size={20} />
+                  <h3>Sensor Piso 2</h3>
+                </div>
+                <div className="card-value">
+                  {ultimaLectura ? (ultimaLectura.valorSensor2 || 0) : '---'}
+                </div>
+                <div className="card-label">
+                  {piso2Alerta ? '🔴 ALERTA ACTIVA' : '🟢 Normal'}
+                </div>
               </div>
 
               <div className="card">
@@ -328,16 +365,19 @@ function App() {
                 <div className="card-label">Límite de detección</div>
               </div>
 
-              <div className={`card ${gasDetectado ? 'alerta' : ''}`}>
+              <div className={`card ${piso1Alerta || piso2Alerta ? 'alerta' : ''}`}>
                 <div className="card-header">
                   <Flame size={20} />
-                  <h3>Estado</h3>
+                  <h3>Estado General</h3>
                 </div>
-                <div className="card-value">
-                  {gasDetectado ? '🔴 ALERTA' : '🟢 NORMAL'}
+                <div className="card-value-emoji">
+                  {piso1Alerta || piso2Alerta ? '🔴' : '🟢'}
+                </div>
+                <div className="card-status-text">
+                  {piso1Alerta || piso2Alerta ? 'ALERTA' : 'NORMAL'}
                 </div>
                 <div className="card-label">
-                  {gasDetectado ? 'Gas detectado' : 'Todo OK'}
+                  {piso1Alerta || piso2Alerta ? 'Gas detectado' : 'Todo OK'}
                 </div>
               </div>
             </div>
@@ -385,7 +425,7 @@ function App() {
               </div>
             </div>
 
-            {/* Gráfico */}
+            {/* MODIFICADO: Gráfico con ambos sensores */}
             <div className="grafico-container">
               <h2 className="section-title">
                 <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -412,11 +452,19 @@ function App() {
                     <Legend />
                     <Line
                       type="monotone"
-                      dataKey="valor"
+                      dataKey="sensor1"
+                      stroke="#4facfe"
+                      strokeWidth={3}
+                      dot={{ fill: '#4facfe', r: 4 }}
+                      name="Sensor Piso 1"
+                    />
+                    <Line
+                      type="monotone"
+                      dataKey="sensor2"
                       stroke="#a78bfa"
                       strokeWidth={3}
                       dot={{ fill: '#a78bfa', r: 4 }}
-                      name="Valor del gas"
+                      name="Sensor Piso 2"
                     />
                     <Line
                       type="monotone"
@@ -464,6 +512,7 @@ function App() {
             </div>
           </>
         )}
+
         {/* VISTA CONFIGURACIÓN */}
         {vistaActual === 'config' && (
           <>
@@ -679,7 +728,7 @@ function App() {
           </>
         )}
 
-        {/* VISTA ESTADÍSTICAS */}
+        {/* VISTA ESTADÍSTICAS - MODIFICADO con alertas por piso */}
         {vistaActual === 'stats' && (
           <>
             <div className="stats-container">
@@ -705,9 +754,9 @@ function App() {
                     <Clock size={32} />
                   </div>
                   <div className="stat-content">
-                    <h3>Tiempo en Alerta</h3>
-                    <div className="stat-value">{estadisticas.tiempoTotalAlerta}s</div>
-                    <small>Tiempo total en estado de alerta</small>
+                    <h3>Alertas Piso 1</h3>
+                    <div className="stat-value">{estadisticas.alertasPiso1 || 0}</div>
+                    <small>Sensor MQ-2 (A0)</small>
                   </div>
                 </div>
 
@@ -716,9 +765,9 @@ function App() {
                     <BarChart3 size={32} />
                   </div>
                   <div className="stat-content">
-                    <h3>Promedio por Alerta</h3>
-                    <div className="stat-value">{porcentajeAlerta}%</div>
-                    <small>Duración promedio de alertas</small>
+                    <h3>Alertas Piso 2</h3>
+                    <div className="stat-value">{estadisticas.alertasPiso2 || 0}</div>
+                    <small>Sensor MQ-2 (A5)</small>
                   </div>
                 </div>
 
@@ -734,7 +783,7 @@ function App() {
                 </div>
               </div>
 
-              {/* Mapa de calor simulado */}
+              {/* Mapa de calor */}
               <div className="mapa-calor">
                 <h3>🔥 Mapa de Calor - Alertas por Hora</h3>
                 <div className="heatmap-grid">
@@ -766,7 +815,7 @@ function App() {
               </div>
             </div>
 
-            {/* Tabla de lecturas históricas */}
+            {/* Tabla de lecturas históricas - MODIFICADO para mostrar ambos sensores */}
             <div className="historial">
               <h2 className="section-title">
                 <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -783,19 +832,23 @@ function App() {
                       <tr>
                         <th>#</th>
                         <th>Fecha/Hora</th>
-                        <th>Valor</th>
+                        <th>Sensor 1 (Piso 1)</th>
+                        <th>Sensor 2 (Piso 2)</th>
                         <th>Estado</th>
                       </tr>
                     </thead>
                     <tbody>
                       {[...lecturas].reverse().slice(0, 20).map((lectura, index) => (
-                        <tr key={lectura.id} className={lectura.gasDetectado ? 'alerta-row' : ''}>
+                        <tr key={lectura.id} className={lectura.sensor1Alerta || lectura.sensor2Alerta ? 'alerta-row' : ''}>
                           <td>{lecturas.length - index}</td>
                           <td>{lectura.timestamp.toLocaleString()}</td>
-                          <td className="valor">{lectura.valorGas}</td>
+                          <td className="valor">{lectura.valorSensor1 || lectura.valorGas || 0}</td>
+                          <td className="valor">{lectura.valorSensor2 || 0}</td>
                           <td>
-                            {lectura.gasDetectado ? (
-                              <span className="badge alerta">🔴 ALERTA</span>
+                            {lectura.sensor1Alerta || lectura.sensor2Alerta ? (
+                              <span className="badge alerta">
+                                🔴 {lectura.sensor1Alerta && 'P1'} {lectura.sensor2Alerta && 'P2'}
+                              </span>
                             ) : (
                               <span className="badge normal">🟢 Normal</span>
                             )}
@@ -816,6 +869,7 @@ function App() {
       <footer className="footer">
         <p>SDGI © 2024 - Cristian Segovia, Simón Contreras, Camilo Herrera, Diego Vera</p>
       </footer>
+
       {/* NOTIFICACIÓN TOAST */}
       {notificacionActiva && (
         <div className={`alert-${notificacionActiva.tipo}`}>

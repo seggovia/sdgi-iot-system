@@ -467,12 +467,45 @@ body {
    ============================================ */
 .cards {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(2, 1fr); /* 2 columnas */
   gap: 2rem;
   margin-bottom: 3rem;
   max-width: 1400px;
   margin-left: auto;
   margin-right: auto;
+}
+.card-status-text {
+  font-size: 2.5rem;
+  font-weight: 900;
+  margin-bottom: 1rem;
+  background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 50%, #ec4899 100%);
+  background-size: 200% 200%;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  animation: gradientShiftValue 3s ease infinite;
+  letter-spacing: -2px;
+  line-height: 1.2;
+}
+.card.alerta .card-value-emoji {
+  animation: emojiPulse 1s ease-in-out infinite;
+}
+@keyframes emojiPulse {
+  0%, 100% { 
+    transform: scale(1); 
+  }
+  50% { 
+    transform: scale(1.1); 
+  }
+}
+.card-value-emoji {
+  font-size: 5rem;
+  line-height: 1;
+  margin-bottom: 1rem;
+  filter: none;
+  transform: translateZ(0); /* Force GPU rendering */
+  will-change: transform;
+  display: block;
 }
 
 .card {
@@ -1668,8 +1701,7 @@ tr:hover {
   }
 
   .cards {
-    grid-template-columns: 1fr;
-    gap: 1.5rem;
+    grid-template-columns: 1fr; /* 1 columna en móvil */
   }
 
   .stats-grid {
