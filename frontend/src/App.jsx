@@ -240,6 +240,7 @@ function App() {
     ? ((estadisticas.tiempoTotalAlerta / (estadisticas.totalAlertas * 60)) * 100).toFixed(1)
     : 0;
   // ==================== RENDER ====================
+  // ==================== RENDER ====================
   return (
     <div className="app">
       {/* Header */}
@@ -289,9 +290,9 @@ function App() {
           <AlertTriangle size={24} />
           <span>
             ⚠️ GAS DETECTADO -
-            {piso1Alerta && ` PISO 1 (${ultimaLectura?.valorSensor1 || 0})`}
+            {piso1Alerta && ` PISO 1 (Sensor A0: ${ultimaLectura?.valorSensor1 || 0})`}
             {piso1Alerta && piso2Alerta && ' | '}
-            {piso2Alerta && ` PISO 2 (${ultimaLectura?.valorSensor2 || 0})`}
+            {piso2Alerta && ` PISO 2 (Sensor A3: ${ultimaLectura?.valorSensor2 || 0})`}
           </span>
           <AlertTriangle size={24} />
         </div>
@@ -301,7 +302,7 @@ function App() {
         {/* VISTA GENERAL */}
         {vistaActual === 'general' && (
           <>
-            {/* Edificio 3D - MODIFICADO con alertas por piso */}
+            {/* Edificio 3D - CON SENSORES, BUZZERS Y LEDS POR PISO */}
             <div className="edificio-container">
               <h2 className="section-title">
                 <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -323,20 +324,30 @@ function App() {
                 piso1Alerta={piso1Alerta}
                 piso2Alerta={piso2Alerta}
                 puertaAbierta={configuracion.servoAbierto}
+                buzzerPiso1={configuracion.buzzerPiso1Activo && piso1Alerta}
+                buzzerPiso2={configuracion.buzzerPiso2Activo && piso2Alerta}
+                ledPiso1={configuracion.ledPiso1Activo && piso1Alerta}
+                ledPiso2={configuracion.ledPiso2Activo && piso2Alerta}
               />
             </div>
 
-            {/* MODIFICADO: Tarjetas de información - Ahora con 4 cards para 2 sensores */}
-            {/* MODIFICADO: Tarjetas de información - 2x2 grid */}
-            {/* MODIFICADO: Tarjetas de información - 2x2 grid */}
+            {/* CARDS CON INFORMACIÓN DETALLADA POR PISO */}
             <div className="cards">
               <div className={`card ${piso1Alerta ? 'alerta' : ''}`}>
                 <div className="card-header">
                   <Activity size={20} />
-                  <h3>Sensor Piso 1</h3>
+                  <h3>Sensor Piso 1 (A0)</h3>
                 </div>
                 <div className="card-value">
                   {ultimaLectura ? (ultimaLectura.valorSensor1 || ultimaLectura.valorGas || 0) : '---'}
+                </div>
+                <div className="card-status-indicators">
+                  <div className={`indicator ${piso1Alerta ? 'active' : ''}`}>
+                    🔊 Buzzer {configuracion.buzzerPiso1Activo ? (piso1Alerta ? 'ON' : 'Listo') : 'OFF'}
+                  </div>
+                  <div className={`indicator ${piso1Alerta ? 'active' : ''}`}>
+                    💡 LED {configuracion.ledPiso1Activo ? (piso1Alerta ? 'ON' : 'Listo') : 'OFF'}
+                  </div>
                 </div>
                 <div className="card-label">
                   {piso1Alerta ? '🔴 ALERTA ACTIVA' : '🟢 Normal'}
@@ -346,10 +357,18 @@ function App() {
               <div className={`card ${piso2Alerta ? 'alerta' : ''}`}>
                 <div className="card-header">
                   <Activity size={20} />
-                  <h3>Sensor Piso 2</h3>
+                  <h3>Sensor Piso 2 (A3)</h3>
                 </div>
                 <div className="card-value">
                   {ultimaLectura ? (ultimaLectura.valorSensor2 || 0) : '---'}
+                </div>
+                <div className="card-status-indicators">
+                  <div className={`indicator ${piso2Alerta ? 'active' : ''}`}>
+                    🔊 Buzzer {configuracion.buzzerPiso2Activo ? (piso2Alerta ? 'ON' : 'Listo') : 'OFF'}
+                  </div>
+                  <div className={`indicator ${piso2Alerta ? 'active' : ''}`}>
+                    💡 LED {configuracion.ledPiso2Activo ? (piso2Alerta ? 'ON' : 'Listo') : 'OFF'}
+                  </div>
                 </div>
                 <div className="card-label">
                   {piso2Alerta ? '🔴 ALERTA ACTIVA' : '🟢 Normal'}
@@ -363,6 +382,9 @@ function App() {
                 </div>
                 <div className="card-value">{configuracion.umbralGas}</div>
                 <div className="card-label">Límite de detección</div>
+                <div className="card-info-extra">
+                  <small>🎚️ Sensibilidad ajustable</small>
+                </div>
               </div>
 
               <div className={`card ${piso1Alerta || piso2Alerta ? 'alerta' : ''}`}>
@@ -377,7 +399,7 @@ function App() {
                   {piso1Alerta || piso2Alerta ? 'ALERTA' : 'NORMAL'}
                 </div>
                 <div className="card-label">
-                  {piso1Alerta || piso2Alerta ? 'Gas detectado' : 'Todo OK'}
+                  {piso1Alerta || piso2Alerta ? 'Gas detectado en edificio' : 'Todo OK'}
                 </div>
               </div>
             </div>
@@ -425,7 +447,7 @@ function App() {
               </div>
             </div>
 
-            {/* MODIFICADO: Gráfico con ambos sensores */}
+            {/* Gráfico con ambos sensores */}
             <div className="grafico-container">
               <h2 className="section-title">
                 <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -456,7 +478,7 @@ function App() {
                       stroke="#4facfe"
                       strokeWidth={3}
                       dot={{ fill: '#4facfe', r: 4 }}
-                      name="Sensor Piso 1"
+                      name="Sensor Piso 1 (A0)"
                     />
                     <Line
                       type="monotone"
@@ -464,7 +486,7 @@ function App() {
                       stroke="#a78bfa"
                       strokeWidth={3}
                       dot={{ fill: '#a78bfa', r: 4 }}
-                      name="Sensor Piso 2"
+                      name="Sensor Piso 2 (A3)"
                     />
                     <Line
                       type="monotone"
@@ -512,7 +534,6 @@ function App() {
             </div>
           </>
         )}
-
         {/* VISTA CONFIGURACIÓN */}
         {vistaActual === 'config' && (
           <>
@@ -553,7 +574,7 @@ function App() {
                     min="10"
                     max="200"
                   />
-                  <small>Sensibilidad de detección (10-200)</small>
+                  <small>Sensibilidad de detección (10-200) | Actual: {configuracion.umbralGas}</small>
                 </div>
 
                 <div className="config-item">
@@ -580,11 +601,11 @@ function App() {
                     min="0"
                     max="255"
                   />
-                  <small>Volumen: {editando ? configTemp.buzzerVolumen : configuracion.buzzerVolumen}</small>
+                  <small>Volumen: {editando ? configTemp.buzzerVolumen : configuracion.buzzerVolumen}/255</small>
                 </div>
 
                 <div className="config-item">
-                  <label>🔊 Buzzer Piso 1</label>
+                  <label>🔊 Buzzer Piso 1 (Pin 5)</label>
                   <div className="toggle">
                     <input
                       type="checkbox"
@@ -594,10 +615,11 @@ function App() {
                     />
                     <span>{(editando ? configTemp.buzzerPiso1Activo : configuracion.buzzerPiso1Activo) ? 'Activado' : 'Desactivado'}</span>
                   </div>
+                  <small>Sensor A0 - Buzzer activo (digitalWrite)</small>
                 </div>
 
                 <div className="config-item">
-                  <label>🔊 Buzzer Piso 2</label>
+                  <label>🔊 Buzzer Piso 2 (Pin 3)</label>
                   <div className="toggle">
                     <input
                       type="checkbox"
@@ -607,10 +629,11 @@ function App() {
                     />
                     <span>{(editando ? configTemp.buzzerPiso2Activo : configuracion.buzzerPiso2Activo) ? 'Activado' : 'Desactivado'}</span>
                   </div>
+                  <small>Sensor A3 - Buzzer pasivo (tone 2000Hz)</small>
                 </div>
 
                 <div className="config-item">
-                  <label>💡 LED Piso 1</label>
+                  <label>💡 LED Piso 1 (Pin 1)</label>
                   <div className="toggle">
                     <input
                       type="checkbox"
@@ -620,10 +643,11 @@ function App() {
                     />
                     <span>{(editando ? configTemp.ledPiso1Activo : configuracion.ledPiso1Activo) ? 'Activado' : 'Desactivado'}</span>
                   </div>
+                  <small>Indicador visual para Sensor A0</small>
                 </div>
 
                 <div className="config-item">
-                  <label>💡 LED Piso 2</label>
+                  <label>💡 LED Piso 2 (Pin 2)</label>
                   <div className="toggle">
                     <input
                       type="checkbox"
@@ -633,6 +657,7 @@ function App() {
                     />
                     <span>{(editando ? configTemp.ledPiso2Activo : configuracion.ledPiso2Activo) ? 'Activado' : 'Desactivado'}</span>
                   </div>
+                  <small>Indicador visual para Sensor A3</small>
                 </div>
               </div>
             </div>
@@ -728,7 +753,7 @@ function App() {
           </>
         )}
 
-        {/* VISTA ESTADÍSTICAS - MODIFICADO con alertas por piso */}
+        {/* VISTA ESTADÍSTICAS */}
         {vistaActual === 'stats' && (
           <>
             <div className="stats-container">
@@ -756,7 +781,7 @@ function App() {
                   <div className="stat-content">
                     <h3>Alertas Piso 1</h3>
                     <div className="stat-value">{estadisticas.alertasPiso1 || 0}</div>
-                    <small>Sensor MQ-2 (A0)</small>
+                    <small>Sensor MQ-2 A0 (Pin 5 buzzer, Pin 1 LED)</small>
                   </div>
                 </div>
 
@@ -767,7 +792,7 @@ function App() {
                   <div className="stat-content">
                     <h3>Alertas Piso 2</h3>
                     <div className="stat-value">{estadisticas.alertasPiso2 || 0}</div>
-                    <small>Sensor MQ-2 (A5)</small>
+                    <small>Sensor MQ-2 A3 (Pin 3 buzzer, Pin 2 LED)</small>
                   </div>
                 </div>
 
@@ -815,7 +840,7 @@ function App() {
               </div>
             </div>
 
-            {/* Tabla de lecturas históricas - MODIFICADO para mostrar ambos sensores */}
+            {/* Tabla de lecturas históricas */}
             <div className="historial">
               <h2 className="section-title">
                 <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -832,8 +857,8 @@ function App() {
                       <tr>
                         <th>#</th>
                         <th>Fecha/Hora</th>
-                        <th>Sensor 1 (Piso 1)</th>
-                        <th>Sensor 2 (Piso 2)</th>
+                        <th>Sensor 1 (A0)</th>
+                        <th>Sensor 2 (A3)</th>
                         <th>Estado</th>
                       </tr>
                     </thead>

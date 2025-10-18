@@ -1,4 +1,4 @@
-/*#include <WiFiS3.h>
+#include <WiFiS3.h>
 #include <Firebase_ESP_Client.h>
 #include <addons/TokenHelper.h>
 #include <addons/RTDBHelper.h>
@@ -10,13 +10,11 @@
 #define WIFI_SSID "TU_NOMBRE_WIFI"        // ⚠️ CAMBIAR
 #define WIFI_PASSWORD "TU_PASSWORD_WIFI"  // ⚠️ CAMBIAR
 
-// Configuración de Firebase (desde tu firebase.js)
 #define API_KEY "AIzaSyCzj116N3yttGaBGFCKAClWWxzmwFAyLL8"
 #define FIREBASE_PROJECT_ID "sdgi-detector-gas"
-#define USER_EMAIL "tu_email@gmail.com"     // ⚠️ CAMBIAR (crea un usuario en Firebase Auth)
+#define USER_EMAIL "tu_email@gmail.com"     // ⚠️ CAMBIAR
 #define USER_PASSWORD "tu_password_seguro"  // ⚠️ CAMBIAR
 
-// Objetos Firebase
 FirebaseData fbdo;
 FirebaseAuth auth;
 FirebaseConfig config;
@@ -24,20 +22,20 @@ FirebaseConfig config;
 Servo miServo;
 const int SERVO_PIN = 6;
 
-// --- Pines ---
+// --- Pines (ACTUALIZADOS) ---
 const int MQ2_PIN = A0;         // Sensor MQ-2 principal (Piso 1)
-const int MQ2_PIN2 = A5;        // Sensor MQ-2 secundario (Piso 2)
-const int BUZZER_PASSIVO = 9;   
-const int BUZZER_ACTIVO = 5;    
-const int LED_PIN = 7;          // LED Piso 1
-const int LED2_PIN = 1;         // LED Piso 2
-const int LED3_PIN = 2;         
+const int MQ2_PIN2 = A3;        // Sensor MQ-2 secundario (Piso 2) - CAMBIADO A A3
+const int BUZZER_A0 = 5;        // Buzzer para sensor A0 (Piso 1)
+const int BUZZER_A3 = 3;        // Buzzer para sensor A3 (Piso 2) - NUEVO
+const int LED_PIN = 7;          // LED de alarma general
+const int LED2_PIN = 1;         // LED para sensor A0 (Piso 1)
+const int LED3_PIN = 2;         // LED para sensor A3 (Piso 2)
 
-// --- Parámetros ---
+// --- Parámetros (ACTUALIZADOS) ---
 const unsigned long CALIBRACION_MS_1 = 10000UL;
 const unsigned long CALIBRACION_MS_2 = 20000UL;
-int UMBRAL_DELTA = 60;          // Ahora puede cambiar desde Firebase
-const float ALPHA = 0.2;
+int UMBRAL_DELTA = 30;          // MÁS SENSIBLE (antes 60)
+const float ALPHA = 0.5;        // RESPUESTA MÁS RÁPIDA (antes 0.2)
 const int HISTERESIS = 12;
 const unsigned long CONFIRM_ON_MS = 1000UL;
 
@@ -64,9 +62,9 @@ int calib_min_2 = 1024, calib_max_2 = 0;
 
 // Variables Firebase
 unsigned long lastFirebaseUpdate = 0;
-const unsigned long FIREBASE_UPDATE_INTERVAL = 2000; // Enviar cada 2 segundos
+const unsigned long FIREBASE_UPDATE_INTERVAL = 2000;
 unsigned long lastConfigCheck = 0;
-const unsigned long CONFIG_CHECK_INTERVAL = 5000; // Leer config cada 5 segundos
+const unsigned long CONFIG_CHECK_INTERVAL = 5000;
 
 // Configuración desde Firebase
 bool buzzerPiso1Activo = true;
@@ -88,8 +86,8 @@ int alertasPiso2 = 0;
 void setup() {
   Serial.begin(115200);
   
-  pinMode(BUZZER_PASSIVO, OUTPUT);
-  pinMode(BUZZER_ACTIVO, OUTPUT);
+  pinMode(BUZZER_A0, OUTPUT);
+  pinMode(BUZZER_A3, OUTPUT);
   pinMode(LED_PIN, OUTPUT);
   pinMode(LED2_PIN, OUTPUT);
   pinMode(LED3_PIN, OUTPUT);
@@ -97,11 +95,18 @@ void setup() {
   miServo.attach(SERVO_PIN);
   miServo.write(0);
 
-  noTone(BUZZER_PASSIVO);
-  digitalWrite(BUZZER_ACTIVO, LOW);
+  digitalWrite(BUZZER_A0, LOW);
+  noTone(BUZZER_A3);
   digitalWrite(LED_PIN, LOW);
   digitalWrite(LED2_PIN, LOW);
   digitalWrite(LED3_PIN, LOW);
+
+  // PRUEBA INICIAL BUZZER PIN 3
+  Serial.println("=== PRUEBA: Buzzer pin 3 (2 segundos) ===");
+  tone(BUZZER_A3, 2000);
+  delay(2000);
+  noTone(BUZZER_A3);
+  Serial.println("=== FIN PRUEBA ===");
 
   // Conectar a WiFi
   Serial.println("\n🌐 Conectando a WiFi...");
@@ -133,7 +138,7 @@ void setup() {
 
   Serial.println("🔥 Conectando a Firebase...");
   
-  // Esperar conexión inicial
+  intentos = 0;
   while (!Firebase.ready() && intentos < 30) {
     delay(500);
     Serial.print(".");
@@ -151,7 +156,7 @@ void setup() {
   // Iniciar calibración
   inicioCal = millis();
   Serial.println("\n🎯 Comenzando calibracion de sensores...");
-  Serial.println("Sensor A0 (Piso 1): 10s | Sensor A5 (Piso 2): 20s");
+  Serial.println("Sensor A0 (Piso 1): 10s | Sensor A3 (Piso 2): 20s");
 }
 
 // ============================================
@@ -180,7 +185,7 @@ void loop() {
 
     if ((muestrasCal % 10 == 0 && ahora - inicioCal < CALIBRACION_MS_1) || (muestrasCal2 % 20 == 0)) {
       Serial.print("Calibrando... A0: "); Serial.print(baseline);
-      Serial.print(" | A5: "); Serial.println(baseline2);
+      Serial.print(" | A3: "); Serial.println(baseline2);
     }
 
     miServo.write(0);
@@ -196,15 +201,15 @@ void loop() {
     Serial.print(" (rango: "); Serial.print(calib_min_1); 
     Serial.print("-"); Serial.print(calib_max_1); Serial.println(")");
     
-    Serial.print("📊 A5 baseline: "); Serial.print(baseline2);
+    Serial.print("📊 A3 baseline: "); Serial.print(baseline2);
     Serial.print(" (rango: "); Serial.print(calib_min_2); 
     Serial.print("-"); Serial.print(calib_max_2); Serial.println(")");
 
     int rango2 = calib_max_2 - calib_min_2;
     if (rango2 < 6) {
       sensor2_fault = true;
-      Serial.println("⚠️ Sensor A5 defectuoso - será ignorado");
-      enviarNotificacion("alerta", "Sensor Piso 2 (A5) defectuoso - verificar conexión");
+      Serial.println("⚠️ Sensor A3 defectuoso - será ignorado");
+      enviarNotificacion("alerta", "Sensor Piso 2 (A3) defectuoso - verificar conexión");
     } else {
       Serial.println("✅ Ambos sensores OK");
     }
@@ -221,14 +226,17 @@ void loop() {
   float umbralOn2 = baseline2 + UMBRAL_DELTA;
   float umbralOff2 = baseline2 + UMBRAL_DELTA - HISTERESIS;
 
-  // --- DETECCIÓN DE ALARMA ---
+  // --- CONDICIONES DE DETECCIÓN ---
+  bool cond1 = (ema > umbralOn);
+  bool cond2 = (!sensor2_fault) && (ema2 > umbralOn2);
+
+  // --- DETECTAR NUEVA ALARMA ---
   bool alarmaAnterior = alarma;
   bool alarmaPiso1Anterior = alarmaPiso1;
   bool alarmaPiso2Anterior = alarmaPiso2;
 
-  // Detectar alertas por piso
-  alarmaPiso1 = (ema > umbralOn);
-  alarmaPiso2 = (!sensor2_fault) && (ema2 > umbralOn2);
+  alarmaPiso1 = cond1;
+  alarmaPiso2 = cond2;
   alarma = alarmaPiso1 || alarmaPiso2;
 
   // Detectar nueva alarma
@@ -256,8 +264,8 @@ void loop() {
     Serial.println("\n✅ Alarma detenida - niveles normales");
   }
 
-  // --- CONTROL DE ACTUADORES ---
-  controlarActuadores();
+  // --- CONTROL DE ACTUADORES INDEPENDIENTES ---
+  controlarActuadores(cond1, cond2);
 
   // --- LEER CONFIGURACIÓN DE FIREBASE ---
   if (ahora - lastConfigCheck > CONFIG_CHECK_INTERVAL) {
@@ -275,8 +283,9 @@ void loop() {
   static unsigned long ultimoSerial = 0;
   if (ahora - ultimoSerial > 1000) {
     Serial.print("A0: "); Serial.print(valorGas);
-    Serial.print(" | A5: "); Serial.print(valorGas2);
-    Serial.print(" | Alarma: "); Serial.print(alarma ? "🔴" : "🟢");
+    Serial.print(" ("); Serial.print(cond1 ? "🔴" : "🟢"); Serial.print(")");
+    Serial.print(" | A3: "); Serial.print(valorGas2);
+    Serial.print(" ("); Serial.print(cond2 ? "🔴" : "🟢"); Serial.print(")");
     Serial.print(" | WiFi: "); Serial.println(WiFi.status() == WL_CONNECTED ? "✓" : "✗");
     ultimoSerial = ahora;
   }
@@ -292,8 +301,6 @@ void enviarDatosFirebase(int sensor1, int sensor2) {
   if (!Firebase.ready()) return;
 
   FirebaseJson content;
-  
-  // Crear documento en lecturas
   String documentPath = "lecturas";
   
   content.set("fields/valorSensor1/integerValue", String(sensor1));
@@ -401,30 +408,30 @@ void actualizarEstadoDispositivo(String estado) {
   Firebase.Firestore.patchDocument(&fbdo, FIREBASE_PROJECT_ID, "", docPath.c_str(), content.raw(), "estado,ultimaConexion");
 }
 
-void controlarActuadores() {
-  // Control de buzzers
-  if (alarma) {
-    if (alarmaPiso1 && buzzerPiso1Activo) {
-      tone(BUZZER_PASSIVO, 2000);
-      digitalWrite(BUZZER_ACTIVO, HIGH);
-    }
-    if (alarmaPiso2 && buzzerPiso2Activo) {
-      // Buzzer piso 2 (puedes agregar otro pin si tienes)
-    }
+void controlarActuadores(bool cond1, bool cond2) {
+  // Control de buzzer Piso 1 (Pin 5 - digitalWrite)
+  if (cond1 && buzzerPiso1Activo) {
+    digitalWrite(BUZZER_A0, HIGH);
   } else {
-    noTone(BUZZER_PASSIVO);
-    digitalWrite(BUZZER_ACTIVO, LOW);
+    digitalWrite(BUZZER_A0, LOW);
+  }
+
+  // Control de buzzer Piso 2 (Pin 3 - tone)
+  if (cond2 && buzzerPiso2Activo) {
+    tone(BUZZER_A3, 2000);
+  } else {
+    noTone(BUZZER_A3);
   }
 
   // Control de LEDs
-  digitalWrite(LED_PIN, (alarmaPiso1 && ledPiso1Activo) ? HIGH : LOW);
-  digitalWrite(LED2_PIN, (alarmaPiso2 && ledPiso2Activo) ? HIGH : LOW);
+  digitalWrite(LED_PIN, alarma ? HIGH : LOW);  // LED general
+  digitalWrite(LED2_PIN, (cond1 && ledPiso1Activo) ? HIGH : LOW);  // LED Piso 1
+  digitalWrite(LED3_PIN, (cond2 && ledPiso2Activo) ? HIGH : LOW);  // LED Piso 2
 
   // Servo automático en alarma
-  if (alarma && !servoAbierto && !servoControlRemoto) {
+  if ((cond1 || cond2) && !servoAbierto && !servoControlRemoto) {
     miServo.write(90);
     servoAbierto = true;
     Serial.println("🚪 Puerta abierta automáticamente");
   }
 }
-  */
