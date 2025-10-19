@@ -446,8 +446,7 @@ function App() {
                 </div>
               </div>
             </div>
-
-            {/* Gráfico con ambos sensores */}
+             {/* Gráfico con ambos sensores */}
             <div className="grafico-container">
               <h2 className="section-title">
                 <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -753,7 +752,7 @@ function App() {
           </>
         )}
 
-        {/* VISTA ESTADÍSTICAS */}
+        {/* VISTA ESTADÍSTICAS - SE MANTIENE IGUAL */}
         {vistaActual === 'stats' && (
           <>
             <div className="stats-container">

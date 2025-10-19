@@ -1,6 +1,8 @@
-import { useRef, useState } from 'react';
+import { useRef, useState, useEffect } from 'react';
 import { Canvas, useFrame } from '@react-three/fiber';
 import { OrbitControls, Text } from '@react-three/drei';
+import { db } from './firebase';
+import { doc, getDoc, setDoc } from 'firebase/firestore';
 
 // Componente del edificio
 function Edificio({ piso1Alerta, piso2Alerta, puertaAbierta, buzzerPiso1, buzzerPiso2, ledPiso1, ledPiso2, posiciones }) {
@@ -29,7 +31,7 @@ function Edificio({ piso1Alerta, piso2Alerta, puertaAbierta, buzzerPiso1, buzzer
       piso2Ref.current.material.emissiveIntensity = Math.sin(time * 5) * 0.5 + 0.5;
     }
 
-    // Animación de sensores - AHORA CAMBIAN DE COLOR SEGÚN ALERTA
+    // Animación de sensores
     if (sensorPiso1Ref.current) {
       sensorPiso1Ref.current.material.emissiveIntensity = piso1Alerta
         ? Math.sin(time * 6) * 0.4 + 0.6
@@ -48,7 +50,7 @@ function Edificio({ piso1Alerta, piso2Alerta, puertaAbierta, buzzerPiso1, buzzer
       }
     }
 
-    // Animación de buzzers (vibración cuando están activos)
+    // Animación de buzzers
     if (buzzerPiso1Ref.current && buzzerPiso1) {
       const baseX = posiciones.buzzer.x;
       buzzerPiso1Ref.current.position.x = baseX + Math.sin(time * 20) * 0.05;
@@ -65,7 +67,7 @@ function Edificio({ piso1Alerta, piso2Alerta, puertaAbierta, buzzerPiso1, buzzer
       buzzerPiso2Ref.current.position.x = posiciones.buzzer.x;
     }
 
-    // Animación de LEDs (parpadeo)
+    // Animación de LEDs
     if (ledPiso1Ref.current) {
       ledPiso1Ref.current.material.emissiveIntensity = ledPiso1
         ? Math.sin(time * 8) * 0.4 + 0.6
@@ -79,7 +81,6 @@ function Edificio({ piso1Alerta, piso2Alerta, puertaAbierta, buzzerPiso1, buzzer
     }
   });
 
-  // Colores de los pisos según estado
   const colorPiso1 = piso1Alerta ? '#ff4444' : '#4facfe';
   const colorPiso2 = piso2Alerta ? '#ff4444' : '#a78bfa';
 
@@ -93,7 +94,6 @@ function Edificio({ piso1Alerta, piso2Alerta, puertaAbierta, buzzerPiso1, buzzer
 
       {/* ========== PISO 1 ========== */}
       <group position={[0, 1, 0]}>
-        {/* Estructura Piso 1 */}
         <mesh ref={piso1Ref} castShadow receiveShadow>
           <boxGeometry args={[5.5, 1.5, 3.5]} />
           <meshStandardMaterial
@@ -117,7 +117,7 @@ function Edificio({ piso1Alerta, piso2Alerta, puertaAbierta, buzzerPiso1, buzzer
           </mesh>
         ))}
 
-        {/* SENSOR PISO 1 - CAMBIA DE COLOR SI HAY ALERTA */}
+        {/* SENSOR PISO 1 */}
         <group position={[posiciones.sensor.x, posiciones.sensor.y, posiciones.sensor.z]}>
           <mesh ref={sensorPiso1Ref} castShadow>
             <cylinderGeometry args={[0.15, 0.15, 0.4, 16]} />
@@ -179,7 +179,6 @@ function Edificio({ piso1Alerta, piso2Alerta, puertaAbierta, buzzerPiso1, buzzer
           )}
         </group>
 
-        {/* Texto Piso 1 - EN PARED IZQUIERDA */}
         <Text
           position={[-2.76, 0, 0]}
           rotation={[0, Math.PI / 2, 0]}
@@ -194,7 +193,6 @@ function Edificio({ piso1Alerta, piso2Alerta, puertaAbierta, buzzerPiso1, buzzer
 
       {/* ========== PISO 2 ========== */}
       <group position={[0, 2.8, 0]}>
-        {/* Estructura Piso 2 */}
         <mesh ref={piso2Ref} castShadow receiveShadow>
           <boxGeometry args={[5.5, 1.5, 3.5]} />
           <meshStandardMaterial
@@ -218,7 +216,7 @@ function Edificio({ piso1Alerta, piso2Alerta, puertaAbierta, buzzerPiso1, buzzer
           </mesh>
         ))}
 
-        {/* SENSOR PISO 2 - CAMBIA DE COLOR SI HAY ALERTA */}
+        {/* SENSOR PISO 2 */}
         <group position={[posiciones.sensor.x, posiciones.sensor.y, posiciones.sensor.z]}>
           <mesh ref={sensorPiso2Ref} castShadow>
             <cylinderGeometry args={[0.15, 0.15, 0.4, 16]} />
@@ -280,7 +278,6 @@ function Edificio({ piso1Alerta, piso2Alerta, puertaAbierta, buzzerPiso1, buzzer
           )}
         </group>
 
-        {/* Texto Piso 2 - EN PARED IZQUIERDA */}
         <Text
           position={[-2.76, 0, 0]}
           rotation={[0, Math.PI / 2, 0]}
@@ -358,8 +355,46 @@ function Edificio({ piso1Alerta, piso2Alerta, puertaAbierta, buzzerPiso1, buzzer
     </group>
   );
 }
+// ============================================
+// MODAL DE CONFIRMACIÓN PERSONALIZADO
+// ============================================
+function ConfirmModal({ isOpen, onConfirm, onCancel, title, message }) {
+  if (!isOpen) return null;
 
-// Componente principal exportable
+  return (
+    <div className="modal-overlay">
+      <div className="modal-container">
+        <div className="modal-header">
+          <div className="modal-icon-warning">⚠️</div>
+          <h3>{title}</h3>
+        </div>
+        
+        <div className="modal-body">
+          <p>{message}</p>
+        </div>
+        
+        <div className="modal-footer">
+          <button 
+            className="modal-btn modal-btn-cancel" 
+            onClick={onCancel}
+          >
+            ✕ Cancelar
+          </button>
+          <button 
+            className="modal-btn modal-btn-confirm" 
+            onClick={onConfirm}
+          >
+            ✓ Activar Modo Edición
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ============================================
+// COMPONENTE PRINCIPAL EXPORTABLE
+// ============================================
 export default function Edificio3D({
   piso1Alerta,
   piso2Alerta,
@@ -369,216 +404,333 @@ export default function Edificio3D({
   ledPiso1 = false,
   ledPiso2 = false
 }) {
-  // Estados para controlar las posiciones
-  const [posiciones, setPosiciones] = useState({
+  // Posiciones por defecto
+  const posicionesDefault = {
     sensor: { x: 1.8, y: 0, z: 1.0 },
     buzzer: { x: -1.8, y: 0, z: 1.0 },
     led: { x: 0, y: 0, z: 1.0 }
-  });
-
-  // Estado para mostrar/ocultar controles
-  const [mostrarControles, setMostrarControles] = useState(false);
-
-  const actualizarPosicion = (componente, eje, valor) => {
-    setPosiciones(prev => ({
-      ...prev,
-      [componente]: {
-        ...prev[componente],
-        [eje]: parseFloat(valor)
-      }
-    }));
   };
 
+  // Estados
+  const [posiciones, setPosiciones] = useState(posicionesDefault);
+  const [posicionesCargadas, setPosicionesCargadas] = useState(false);
+  const [mostrarControles, setMostrarControles] = useState(false);
+  const [modoEdicion, setModoEdicion] = useState(false);
+  const [showModal, setShowModal] = useState(false);
+
+  // ============================================
+  // CARGAR POSICIONES DESDE FIRESTORE
+  // ============================================
+  useEffect(() => {
+    const cargarPosiciones = async () => {
+      try {
+        const docRef = doc(db, 'edificioPosiciones', 'posicionesEdificio');
+        const docSnap = await getDoc(docRef);
+        
+        if (docSnap.exists()) {
+          const data = docSnap.data();
+          setPosiciones(data);
+          console.log('✅ Posiciones cargadas desde Firestore:', data);
+        } else {
+          console.log('ℹ️ No hay posiciones guardadas, usando valores por defecto');
+          await setDoc(docRef, posicionesDefault);
+        }
+      } catch (error) {
+        console.error('❌ Error al cargar posiciones:', error);
+      } finally {
+        setPosicionesCargadas(true);
+      }
+    };
+
+    cargarPosiciones();
+  }, []);
+
+  // ============================================
+  // GUARDAR POSICIONES EN FIRESTORE
+  // ============================================
+  const guardarPosiciones = async (nuevasPosiciones) => {
+    if (!modoEdicion) return;
+    
+    try {
+      const docRef = doc(db, 'edificioPosiciones', 'posicionesEdificio');
+      await setDoc(docRef, nuevasPosiciones);
+      console.log('💾 Posiciones guardadas en Firestore:', nuevasPosiciones);
+    } catch (error) {
+      console.error('❌ Error al guardar posiciones:', error);
+    }
+  };
+
+  // ============================================
+  // ACTUALIZAR POSICIÓN CON AUTOSAVE
+  // ============================================
+  const actualizarPosicion = (componente, eje, valor) => {
+    const nuevasPosiciones = {
+      ...posiciones,
+      [componente]: {
+        ...posiciones[componente],
+        [eje]: parseFloat(valor)
+      }
+    };
+    
+    setPosiciones(nuevasPosiciones);
+    guardarPosiciones(nuevasPosiciones);
+  };
+
+  // ============================================
+  // TOGGLE MODO EDICIÓN CON MODAL
+  // ============================================
+  const handleToggleModoEdicion = () => {
+    if (!modoEdicion) {
+      setShowModal(true);
+    } else {
+      setModoEdicion(false);
+      console.log('🔒 Modo edición DESACTIVADO');
+    }
+  };
+
+  const confirmarActivacion = () => {
+    setModoEdicion(true);
+    setShowModal(false);
+    console.log('✏️ Modo edición ACTIVADO');
+  };
+
+  const cancelarActivacion = () => {
+    setShowModal(false);
+  };
+
+  // ============================================
+  // LOADING STATE
+  // ============================================
+  if (!posicionesCargadas) {
+    return (
+      <div className="edificio-loading">
+        <div className="loading-spinner"></div>
+        <p>📡 Cargando configuración del edificio...</p>
+      </div>
+    );
+  }
+
   return (
-    <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: '10px' }}>
-      {/* Botón para mostrar/ocultar controles */}
+    <div className="edificio3d-wrapper">
+      {/* MODAL DE CONFIRMACIÓN */}
+      <ConfirmModal
+        isOpen={showModal}
+        onConfirm={confirmarActivacion}
+        onCancel={cancelarActivacion}
+        title="Activar Modo Edición"
+        message="¿Estás seguro de que deseas activar el modo edición? Podrás modificar las posiciones de los componentes del edificio 3D. Los cambios se guardarán automáticamente en Firestore."
+      />
+
+      {/* BOTÓN PRINCIPAL: MOSTRAR/OCULTAR CONTROLES */}
       <button
         onClick={() => setMostrarControles(!mostrarControles)}
-        style={{
-          alignSelf: 'flex-end',
-          padding: '0.75rem 1.5rem',
-          background: 'linear-gradient(135deg, #6366f1, #8b5cf6)',
-          color: 'white',
-          border: 'none',
-          borderRadius: '12px',
-          cursor: 'pointer',
-          fontWeight: '700',
-          fontSize: '0.9rem',
-          display: 'flex',
-          alignItems: 'center',
-          gap: '0.5rem',
-          boxShadow: '0 4px 12px rgba(99, 102, 241, 0.3)',
-          transition: 'all 0.3s ease'
-        }}
-        onMouseEnter={(e) => {
-          e.currentTarget.style.transform = 'translateY(-2px)';
-          e.currentTarget.style.boxShadow = '0 6px 20px rgba(99, 102, 241, 0.4)';
-        }}
-        onMouseLeave={(e) => {
-          e.currentTarget.style.transform = 'translateY(0)';
-          e.currentTarget.style.boxShadow = '0 4px 12px rgba(99, 102, 241, 0.3)';
-        }}
+        className="btn-toggle-controles"
       >
-        <span>⚙️ Editar Posiciones</span>
-        <span style={{ 
-          transform: mostrarControles ? 'rotate(180deg)' : 'rotate(0deg)',
-          transition: 'transform 0.3s ease'
-        }}>
-          ▼
+        <span className="btn-icon">⚙️</span>
+        <span className="btn-text">
+          {mostrarControles ? 'Ocultar Controles' : 'Mostrar Controles'}
         </span>
+        <span className={`btn-arrow ${mostrarControles ? 'rotated' : ''}`}>▼</span>
       </button>
 
-      {/* Controles (se muestran/ocultan con animación) */}
-      <div style={{
-        maxHeight: mostrarControles ? '1000px' : '0',
-        overflow: 'hidden',
-        transition: 'max-height 0.5s cubic-bezier(0.4, 0, 0.2, 1)',
-        background: 'rgba(255, 255, 255, 0.95)',
-        borderRadius: '16px',
-        boxShadow: mostrarControles ? '0 4px 12px rgba(0,0,0,0.1)' : 'none'
-      }}>
-        <div style={{ padding: mostrarControles ? '20px' : '0' }}>
-          <h3 style={{ marginBottom: '15px', color: '#6366f1', fontWeight: 'bold' }}>
-            🎮 Controles de Posición (Límites: X: -2.75 a 2.75, Z: -1.75 a 1.75)
-          </h3>
+      {/* PANEL DE CONTROLES DESPLEGABLE */}
+      <div className={`controles-panel ${mostrarControles ? 'open' : ''}`}>
+        <div className="controles-content">
           
-          {/* Sensor */}
-          <div style={{ marginBottom: '15px', padding: '10px', background: '#f0f9ff', borderRadius: '8px' }}>
-            <h4 style={{ color: '#10b981', marginBottom: '10px' }}>📡 Sensor (Derecha)</h4>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '10px' }}>
-              <label style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
-                <span style={{ fontSize: '12px', fontWeight: 'bold' }}>X: {posiciones.sensor.x}</span>
+          {/* TOGGLE MODO EDICIÓN */}
+          <div className="modo-edicion-section">
+            <div className="modo-edicion-header">
+              <div className="modo-edicion-info">
+                <h4>🔒 Modo Edición</h4>
+                <p>Activa para modificar las posiciones de componentes</p>
+              </div>
+              <label className="switch-modo-edicion">
                 <input
-                  type="range"
-                  min="-2.75"
-                  max="2.75"
-                  step="0.1"
-                  value={posiciones.sensor.x}
-                  onChange={(e) => actualizarPosicion('sensor', 'x', e.target.value)}
-                  style={{ width: '100%' }}
+                  type="checkbox"
+                  checked={modoEdicion}
+                  onChange={handleToggleModoEdicion}
                 />
-              </label>
-              <label style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
-                <span style={{ fontSize: '12px', fontWeight: 'bold' }}>Y: {posiciones.sensor.y}</span>
-                <input
-                  type="range"
-                  min="-0.5"
-                  max="0.7"
-                  step="0.1"
-                  value={posiciones.sensor.y}
-                  onChange={(e) => actualizarPosicion('sensor', 'y', e.target.value)}
-                  style={{ width: '100%' }}
-                />
-              </label>
-              <label style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
-                <span style={{ fontSize: '12px', fontWeight: 'bold' }}>Z: {posiciones.sensor.z}</span>
-                <input
-                  type="range"
-                  min="-1.75"
-                  max="1.75"
-                  step="0.1"
-                  value={posiciones.sensor.z}
-                  onChange={(e) => actualizarPosicion('sensor', 'z', e.target.value)}
-                  style={{ width: '100%' }}
-                />
+                <span className="slider-modo-edicion"></span>
               </label>
             </div>
+            
+            {modoEdicion && (
+              <div className="modo-edicion-badge">
+                <span className="badge-icon">✏️</span>
+                <span className="badge-text">Modo Edición Activo</span>
+                <span className="badge-pulse"></span>
+              </div>
+            )}
           </div>
 
-          {/* Buzzer */}
-          <div style={{ marginBottom: '15px', padding: '10px', background: '#fef3c7', borderRadius: '8px' }}>
-            <h4 style={{ color: '#f59e0b', marginBottom: '10px' }}>🔊 Buzzer (Izquierda)</h4>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '10px' }}>
-              <label style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
-                <span style={{ fontSize: '12px', fontWeight: 'bold' }}>X: {posiciones.buzzer.x}</span>
-                <input
-                  type="range"
-                  min="-2.75"
-                  max="2.75"
-                  step="0.1"
-                  value={posiciones.buzzer.x}
-                  onChange={(e) => actualizarPosicion('buzzer', 'x', e.target.value)}
-                  style={{ width: '100%' }}
-                />
-              </label>
-              <label style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
-                <span style={{ fontSize: '12px', fontWeight: 'bold' }}>Y: {posiciones.buzzer.y}</span>
-                <input
-                  type="range"
-                  min="-0.5"
-                  max="0.7"
-                  step="0.1"
-                  value={posiciones.buzzer.y}
-                  onChange={(e) => actualizarPosicion('buzzer', 'y', e.target.value)}
-                  style={{ width: '100%' }}
-                />
-              </label>
-              <label style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
-                <span style={{ fontSize: '12px', fontWeight: 'bold' }}>Z: {posiciones.buzzer.z}</span>
-                <input
-                  type="range"
-                  min="-1.75"
-                  max="1.75"
-                  step="0.1"
-                  value={posiciones.buzzer.z}
-                  onChange={(e) => actualizarPosicion('buzzer', 'z', e.target.value)}
-                  style={{ width: '100%' }}
-                />
-              </label>
+          {/* CONTROLES DE POSICIÓN */}
+          <div className={`posicion-controls ${!modoEdicion ? 'disabled' : ''}`}>
+            {!modoEdicion && (
+              <div className="overlay-disabled">
+                <div className="overlay-message">
+                  <span className="overlay-icon">🔒</span>
+                  <p>Activa el <strong>Modo Edición</strong> para modificar las posiciones</p>
+                </div>
+              </div>
+            )}
+
+            <div className="controls-header">
+              <h4>🎮 Controles de Posición</h4>
+              <span className="autosave-badge">
+                💾 AUTOSAVE ACTIVO
+              </span>
             </div>
-          </div>
 
-          {/* LED */}
-          <div style={{ padding: '10px', background: '#fee2e2', borderRadius: '8px' }}>
-            <h4 style={{ color: '#ef4444', marginBottom: '10px' }}>💡 LED (Centro)</h4>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '10px' }}>
-              <label style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
-                <span style={{ fontSize: '12px', fontWeight: 'bold' }}>X: {posiciones.led.x}</span>
-                <input
-                  type="range"
-                  min="-2.75"
-                  max="2.75"
-                  step="0.1"
-                  value={posiciones.led.x}
-                  onChange={(e) => actualizarPosicion('led', 'x', e.target.value)}
-                  style={{ width: '100%' }}
-                />
-              </label>
-              <label style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
-                <span style={{ fontSize: '12px', fontWeight: 'bold' }}>Y: {posiciones.led.y}</span>
-                <input
-                  type="range"
-                  min="-0.5"
-                  max="0.7"
-                  step="0.1"
-                  value={posiciones.led.y}
-                  onChange={(e) => actualizarPosicion('led', 'y', e.target.value)}
-                  style={{ width: '100%' }}
-                />
-              </label>
-              <label style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
-                <span style={{ fontSize: '12px', fontWeight: 'bold' }}>Z: {posiciones.led.z}</span>
-                <input
-                  type="range"
-                  min="-1.75"
-                  max="1.75"
-                  step="0.1"
-                  value={posiciones.led.z}
-                  onChange={(e) => actualizarPosicion('led', 'z', e.target.value)}
-                  style={{ width: '100%' }}
-                />
-              </label>
+            <p className="controls-subtitle">
+              Límites: X: -2.75 a 2.75, Z: -1.75 a 1.75
+            </p>
+
+            {/* SENSOR */}
+            <div className="control-group sensor-group">
+              <div className="control-group-header">
+                <span className="control-icon">📡</span>
+                <h5>Sensor (Derecha)</h5>
+              </div>
+              <div className="sliders-grid">
+                <label className="slider-control">
+                  <span className="slider-label">X: {posiciones.sensor.x}</span>
+                  <input
+                    type="range"
+                    min="-2.75"
+                    max="2.75"
+                    step="0.1"
+                    value={posiciones.sensor.x}
+                    onChange={(e) => actualizarPosicion('sensor', 'x', e.target.value)}
+                    disabled={!modoEdicion}
+                  />
+                </label>
+                <label className="slider-control">
+                  <span className="slider-label">Y: {posiciones.sensor.y}</span>
+                  <input
+                    type="range"
+                    min="-0.5"
+                    max="0.7"
+                    step="0.1"
+                    value={posiciones.sensor.y}
+                    onChange={(e) => actualizarPosicion('sensor', 'y', e.target.value)}
+                    disabled={!modoEdicion}
+                  />
+                </label>
+                <label className="slider-control">
+                  <span className="slider-label">Z: {posiciones.sensor.z}</span>
+                  <input
+                    type="range"
+                    min="-1.75"
+                    max="1.75"
+                    step="0.1"
+                    value={posiciones.sensor.z}
+                    onChange={(e) => actualizarPosicion('sensor', 'z', e.target.value)}
+                    disabled={!modoEdicion}
+                  />
+                </label>
+              </div>
+            </div>
+
+            {/* BUZZER */}
+            <div className="control-group buzzer-group">
+              <div className="control-group-header">
+                <span className="control-icon">🔊</span>
+                <h5>Buzzer (Izquierda)</h5>
+              </div>
+              <div className="sliders-grid">
+                <label className="slider-control">
+                  <span className="slider-label">X: {posiciones.buzzer.x}</span>
+                  <input
+                    type="range"
+                    min="-2.75"
+                    max="2.75"
+                    step="0.1"
+                    value={posiciones.buzzer.x}
+                    onChange={(e) => actualizarPosicion('buzzer', 'x', e.target.value)}
+                    disabled={!modoEdicion}
+                  />
+                </label>
+                <label className="slider-control">
+                  <span className="slider-label">Y: {posiciones.buzzer.y}</span>
+                  <input
+                    type="range"
+                    min="-0.5"
+                    max="0.7"
+                    step="0.1"
+                    value={posiciones.buzzer.y}
+                    onChange={(e) => actualizarPosicion('buzzer', 'y', e.target.value)}
+                    disabled={!modoEdicion}
+                  />
+                </label>
+                <label className="slider-control">
+                  <span className="slider-label">Z: {posiciones.buzzer.z}</span>
+                  <input
+                    type="range"
+                    min="-1.75"
+                    max="1.75"
+                    step="0.1"
+                    value={posiciones.buzzer.z}
+                    onChange={(e) => actualizarPosicion('buzzer', 'z', e.target.value)}
+                    disabled={!modoEdicion}
+                  />
+                </label>
+              </div>
+            </div>
+
+            {/* LED */}
+            <div className="control-group led-group">
+              <div className="control-group-header">
+                <span className="control-icon">💡</span>
+                <h5>LED (Centro)</h5>
+              </div>
+              <div className="sliders-grid">
+                <label className="slider-control">
+                  <span className="slider-label">X: {posiciones.led.x}</span>
+                  <input
+                    type="range"
+                    min="-2.75"
+                    max="2.75"
+                    step="0.1"
+                    value={posiciones.led.x}
+                    onChange={(e) => actualizarPosicion('led', 'x', e.target.value)}
+                    disabled={!modoEdicion}
+                  />
+                </label>
+                <label className="slider-control">
+                  <span className="slider-label">Y: {posiciones.led.y}</span>
+                  <input
+                    type="range"
+                    min="-0.5"
+                    max="0.7"
+                    step="0.1"
+                    value={posiciones.led.y}
+                    onChange={(e) => actualizarPosicion('led', 'y', e.target.value)}
+                    disabled={!modoEdicion}
+                  />
+                </label>
+                <label className="slider-control">
+                  <span className="slider-label">Z: {posiciones.led.z}</span>
+                  <input
+                    type="range"
+                    min="-1.75"
+                    max="1.75"
+                    step="0.1"
+                    value={posiciones.led.z}
+                    onChange={(e) => actualizarPosicion('led', 'z', e.target.value)}
+                    disabled={!modoEdicion}
+                  />
+                </label>
+              </div>
             </div>
           </div>
         </div>
       </div>
 
-      {/* Canvas 3D */}
-      <div style={{ width: '100%', height: '500px' }}>
+      {/* CANVAS 3D */}
+      <div className="edificio-canvas">
         <Canvas
           camera={{ position: [8, 4, 8], fov: 50 }}
           shadows
-          style={{ background: 'linear-gradient(135deg, #0f0f23 0%, #1a1a2e 100%)' }}
         >
           <ambientLight intensity={0.4} />
           <directionalLight
