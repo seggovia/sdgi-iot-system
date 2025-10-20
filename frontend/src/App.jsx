@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { db } from './firebase';
-import { ref, onValue, set, update } from 'firebase/database';
+import { ref, onValue, set, update, push, get } from 'firebase/database';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import {
   Flame,
@@ -18,8 +18,8 @@ import {
   BarChart3
 } from 'lucide-react';
 import Edificio3D from './Edificio3D';
-import './App.css';
 import SimulacionPanel from './SimulacionPanel';
+import './App.css';
 
 function App() {
   // ==================== ESTADOS PRINCIPALES ====================
@@ -78,7 +78,7 @@ function App() {
   const [configGlobalTemp, setConfigGlobalTemp] = useState({});
   const [vistaActual, setVistaActual] = useState('general');
 
-  // ==================== EFECTOS (Realtime Database) ====================
+  // ==================== EFECTOS (Firebase Realtime Database) ====================
 
   // Escuchar configuración del sistema
   useEffect(() => {
@@ -131,6 +131,7 @@ function App() {
   }, []);
 
   // Escuchar lecturas (últimas 50)
+  // Escuchar lecturas (últimas 50)
   useEffect(() => {
     const lecturasRef = ref(db, 'lecturas');
     const unsubscribe = onValue(lecturasRef, (snapshot) => {
@@ -139,14 +140,23 @@ function App() {
         const lecturasArray = Object.keys(data).map(key => ({
           id: key,
           ...data[key],
-          timestamp: new Date(parseInt(key)) // Usar el timestamp como ID
-        })).sort((a, b) => a.timestamp - b.timestamp).slice(-50); // Últimas 50
+          timestamp: new Date(data[key].timestamp || parseInt(key)) // 🔥 CORREGIDO
+        })).sort((a, b) => a.timestamp - b.timestamp).slice(-50);
 
         setLecturas(lecturasArray);
 
         if (lecturasArray.length > 0) {
           const ultima = lecturasArray[lecturasArray.length - 1];
           setUltimaLectura(ultima);
+
+          // 🔥 NUEVO: Logs para debugging
+          console.log('📊 Última lectura recibida:', {
+            sensor1: ultima.valorSensor1,
+            sensor2: ultima.valorSensor2,
+            alerta1: ultima.sensor1Alerta,
+            alerta2: ultima.sensor2Alerta
+          });
+
           setPiso1Alerta(ultima.sensor1Alerta || false);
           setPiso2Alerta(ultima.sensor2Alerta || false);
         }
@@ -208,6 +218,7 @@ function App() {
     });
     return () => unsubscribe();
   }, []);
+
   // ==================== FUNCIONES ====================
 
   // Guardar configuración del sistema
@@ -274,7 +285,7 @@ function App() {
   // Datos para el gráfico
   const datosGrafico = lecturas.slice(-30).map((lectura, index) => ({
     nombre: `#${index + 1}`,
-    sensor1: lectura.valorSensor1 || lectura.valorGas || 0,
+    sensor1: lectura.valorSensor1 || 0,
     sensor2: lectura.valorSensor2 || 0,
     umbral: configuracion.umbralGas,
     tiempo: lectura.timestamp.toLocaleTimeString()
@@ -285,7 +296,6 @@ function App() {
     ? ((estadisticas.tiempoTotalAlerta / (estadisticas.totalAlertas * 60)) * 100).toFixed(1)
     : 0;
 
-  // ==================== RENDER ====================
 
   return (
     <div className="app">
@@ -470,12 +480,13 @@ function App() {
                   <span>{configuracion.servoAbierto ? 'Cerrar Puerta' : 'Abrir Puerta'}</span>
                 </button>
 
+                {/* BOTÓN MODIFICADO - PANEL DE SIMULACIÓN */}
                 <button
                   className={`control-btn ${mostrarPanelSimulacion ? 'active' : ''}`}
                   onClick={() => setMostrarPanelSimulacion(true)}
                 >
                   <PlayCircle size={24} />
-                  <span>Abrir Panel de Simulación</span>
+                  <span>Panel de Simulación</span>
                 </button>
 
                 <div className="control-info">
@@ -946,7 +957,7 @@ function App() {
           {notificacionActiva.mensaje}
         </div>
       )}
-      
+
       {/* PANEL DE SIMULACIÓN */}
       {mostrarPanelSimulacion && (
         <SimulacionPanel

@@ -698,3 +698,69 @@
     grid-template-columns: 1fr;
   }
 }
+/* ============================================
+   INFO BOX Y ALERTA BADGE
+   ============================================ */
+.sim-info-box {
+  margin-top: 1.5rem;
+  padding: 1.25rem;
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.08), rgba(99, 102, 241, 0.08));
+  border: 2px solid rgba(59, 130, 246, 0.25);
+  border-radius: 14px;
+}
+
+.sim-info-box p {
+  margin: 0.5rem 0;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #1e293b;
+}
+
+.sim-info-box strong {
+  color: #3b82f6;
+  font-weight: 800;
+}
+
+.alerta-badge {
+  display: inline-block;
+  margin-left: 0.75rem;
+  padding: 0.25rem 0.75rem;
+  background: linear-gradient(135deg, #ef4444, #f87171);
+  color: white;
+  border-radius: 100px;
+  font-size: 0.8rem;
+  font-weight: 800;
+  animation: badgePulse 1.5s ease-in-out infinite;
+}
+
+@keyframes badgePulse {
+  0%, 100% {
+    transform: scale(1);
+    box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7);
+  }
+  50% {
+    transform: scale(1.05);
+    box-shadow: 0 0 0 8px rgba(239, 68, 68, 0);
+  }
+}
+
+.auto-incr-info {
+  margin-top: 0.75rem;
+  padding: 0.75rem;
+  background: rgba(245, 158, 11, 0.1);
+  border-left: 4px solid #f59e0b;
+  border-radius: 8px;
+  color: #92400e;
+  font-weight: 700;
+}
+
+.sim-slider:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.sim-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none !important;
+}
