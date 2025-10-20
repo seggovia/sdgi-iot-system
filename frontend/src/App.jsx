@@ -379,7 +379,7 @@ function App() {
               <Edificio3D
                 piso1Alerta={piso1Alerta}
                 piso2Alerta={piso2Alerta}
-                puertaAbierta={configuracion.servoAbierto}
+                puertaAbierta={configuracion.servoAbierto || piso1Alerta || piso2Alerta}
                 buzzerPiso1={configuracion.buzzerPiso1Activo && piso1Alerta}
                 buzzerPiso2={configuracion.buzzerPiso2Activo && piso2Alerta}
                 ledPiso1={configuracion.ledPiso1Activo && piso1Alerta}
