@@ -362,14 +362,30 @@ void leerConfiguracionFirebase() {
     }
   }
 
-  // Leer estado del servo (control remoto)
+  // 🔥 CORREGIDO: Leer estado del servo (control remoto)
   if (Firebase.RTDB.getBool(&fbdo, "/configuracion/sistema/servoAbierto")) {
     if (fbdo.dataType() == "boolean") {
-      bool nuevoEstado = fbdo.boolData();
-      if (nuevoEstado != servoControlRemoto) {
-        servoControlRemoto = nuevoEstado;
-        miServo.write(servoControlRemoto ? 90 : 0);
-        Serial.println(servoControlRemoto ? "🚪 Puerta ABIERTA (remoto)" : "🚪 Puerta CERRADA (remoto)");
+      bool nuevoEstadoRemoto = fbdo.boolData();
+      
+      // Solo aplicar si hubo cambio
+      if (nuevoEstadoRemoto != servoControlRemoto) {
+        servoControlRemoto = nuevoEstadoRemoto;
+        
+        // 🔥 IMPORTANTE: Solo mover servo si NO hay alerta activa
+        if (alarma) {
+          Serial.println("⚠️ Comando servo ignorado: hay alerta activa");
+        } else {
+          // Sin alerta: aplicar comando remoto
+          if (servoControlRemoto) {
+            miServo.write(90);
+            servoAbierto = true;
+            Serial.println("🚪 Puerta ABIERTA (remoto)");
+          } else {
+            miServo.write(0);
+            servoAbierto = false;
+            Serial.println("🚪 Puerta CERRADA (remoto)");
+          }
+        }
       }
     }
   }
@@ -448,14 +464,34 @@ void controlarActuadores(bool cond1, bool cond2) {
   }
 
   // Control de LEDs
-  digitalWrite(LED_PIN, alarma ? HIGH : LOW);  // LED general
-  digitalWrite(LED2_PIN, (cond1 && ledPiso1Activo) ? HIGH : LOW);  // LED Piso 1
-  digitalWrite(LED3_PIN, (cond2 && ledPiso2Activo) ? HIGH : LOW);  // LED Piso 2
+  digitalWrite(LED_PIN, alarma ? HIGH : LOW);
+  digitalWrite(LED2_PIN, (cond1 && ledPiso1Activo) ? HIGH : LOW);
+  digitalWrite(LED3_PIN, (cond2 && ledPiso2Activo) ? HIGH : LOW);
 
-  // Servo automático en alarma (solo si no está controlado remotamente)
-  if ((cond1 || cond2) && !servoAbierto && !servoControlRemoto) {
-    miServo.write(90);
-    servoAbierto = true;
-    Serial.println("🚪 Puerta abierta automáticamente");
+  // 🔥 SERVO CORREGIDO: Seguridad primero
+  if (cond1 || cond2) {
+    // HAY ALERTA: Abrir SIEMPRE (ignora todo lo demás)
+    if (!servoAbierto) {
+      miServo.write(90);
+      servoAbierto = true;
+      Serial.println("🚪 Puerta ABIERTA por detección de gas");
+    }
+  } else {
+    // SIN ALERTA: Respetar control remoto
+    if (servoControlRemoto) {
+      // Usuario quiere abrirla manualmente
+      if (!servoAbierto) {
+        miServo.write(90);
+        servoAbierto = true;
+        Serial.println("🚪 Puerta ABIERTA (control remoto)");
+      }
+    } else {
+      // Usuario quiere cerrarla
+      if (servoAbierto) {
+        miServo.write(0);
+        servoAbierto = false;
+        Serial.println("🚪 Puerta CERRADA");
+      }
+    }
   }
 }

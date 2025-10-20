@@ -183,6 +183,8 @@ function SimulacionPanel({ onClose, configuracion, ultimaLectura }) {
   // ESCENARIOS PREDEFINIDOS
   // ============================================
 
+  // Reemplazar TODOS los escenarios con esta versión corregida:
+
   const escenarios = {
     fugaLeve: {
       nombre: 'Fuga Leve',
@@ -191,13 +193,18 @@ function SimulacionPanel({ onClose, configuracion, ultimaLectura }) {
       ejecutar: async () => {
         console.log('💨 Ejecutando escenario: Fuga Leve');
         setEscenarioActivo('fugaLeve');
-        setValorSensor1(30);
-        setValorSensor2(25);
-        setAutoIncremento(true);
 
-        setTimeout(() => {
-          enviarValoresSimulados();
-        }, 100);
+        // 🔥 IMPORTANTE: Actualizar estados y enviar inmediatamente
+        const nuevoValor1 = 30;
+        const nuevoValor2 = 25;
+        setValorSensor1(nuevoValor1);
+        setValorSensor2(nuevoValor2);
+
+        // Enviar manualmente con los nuevos valores
+        await enviarDatosDirecto(nuevoValor1, nuevoValor2, false, false);
+
+        // Activar auto-incremento DESPUÉS del envío inicial
+        setAutoIncremento(true);
       }
     },
     fugaSevera: {
@@ -207,13 +214,15 @@ function SimulacionPanel({ onClose, configuracion, ultimaLectura }) {
       ejecutar: async () => {
         console.log('⚠️ Ejecutando escenario: Fuga Severa');
         setEscenarioActivo('fugaSevera');
-        setValorSensor1(configuracion.umbralGas + 50);
-        setValorSensor2(40);
+
+        const nuevoValor1 = configuracion.umbralGas + 50;
+        const nuevoValor2 = 40;
+        setValorSensor1(nuevoValor1);
+        setValorSensor2(nuevoValor2);
         setForzarAlertaPiso1(true);
 
-        setTimeout(() => {
-          enviarValoresSimulados();
-        }, 100);
+        // Enviar con alerta forzada
+        await enviarDatosDirecto(nuevoValor1, nuevoValor2, true, false);
 
         setTimeout(() => {
           setForzarAlertaPiso1(false);
@@ -227,24 +236,26 @@ function SimulacionPanel({ onClose, configuracion, ultimaLectura }) {
       ejecutar: async () => {
         console.log('🚨 Ejecutando escenario: Emergencia Total');
         setEscenarioActivo('emergenciaTotal');
-        setValorSensor1(configuracion.umbralGas + 80);
-        setValorSensor2(configuracion.umbralGas + 75);
+
+        const nuevoValor1 = configuracion.umbralGas + 80;
+        const nuevoValor2 = configuracion.umbralGas + 75;
+        setValorSensor1(nuevoValor1);
+        setValorSensor2(nuevoValor2);
         setForzarAlertaPiso1(true);
         setForzarAlertaPiso2(true);
 
-        setTimeout(() => {
-          enviarValoresSimulados();
+        // Enviar con ambas alertas forzadas
+        await enviarDatosDirecto(nuevoValor1, nuevoValor2, true, true);
 
-          // Enviar notificación de emergencia
-          const notifRef = push(ref(db, 'notificaciones'));
-          set(notifRef, {
-            tipo: 'alerta',
-            mensaje: '🚨 EMERGENCIA TOTAL - Evacuación inmediata del edificio',
-            timestamp: Date.now(),
-            leido: false,
-            simulacion: true
-          });
-        }, 100);
+        // Notificación de emergencia
+        const notifRef = push(ref(db, 'notificaciones'));
+        await set(notifRef, {
+          tipo: 'alerta',
+          mensaje: '🚨 EMERGENCIA TOTAL - Evacuación inmediata del edificio',
+          timestamp: Date.now(),
+          leido: false,
+          simulacion: true
+        });
 
         setTimeout(() => {
           setForzarAlertaPiso1(false);
@@ -269,20 +280,65 @@ function SimulacionPanel({ onClose, configuracion, ultimaLectura }) {
           ledPiso2Activo: true
         });
 
+        // Valores moderados para activar alertas
+        const nuevoValor1 = configuracion.umbralGas + 10;
+        const nuevoValor2 = configuracion.umbralGas + 10;
+        setValorSensor1(nuevoValor1);
+        setValorSensor2(nuevoValor2);
+
+        await enviarDatosDirecto(nuevoValor1, nuevoValor2, false, false);
+
+        // Abrir puerta después de 2 segundos
         setTimeout(async () => {
           await update(configRef, {
             servoAbierto: true
           });
         }, 2000);
-
-        // Valores moderados para activar alertas
-        setValorSensor1(configuracion.umbralGas + 10);
-        setValorSensor2(configuracion.umbralGas + 10);
-
-        setTimeout(() => {
-          enviarValoresSimulados();
-        }, 100);
       }
+    }
+  };
+  // 🔥 NUEVA FUNCIÓN: Enviar datos directamente sin depender de estados
+  const enviarDatosDirecto = async (valor1, valor2, forzarP1, forzarP2) => {
+    try {
+      const timestamp = Date.now();
+      const lecturaRef = ref(db, `lecturas/${timestamp}`);
+
+      const alerta1 = valor1 > configuracion.umbralGas || forzarP1;
+      const alerta2 = valor2 > configuracion.umbralGas || forzarP2;
+
+      const datos = {
+        valorSensor1: valor1,
+        valorSensor2: valor2,
+        sensor1Alerta: alerta1,
+        sensor2Alerta: alerta2,
+        dispositivo: 'simulacion_web',
+        timestamp: timestamp,
+        modoSimulacion: true
+      };
+
+      await set(lecturaRef, datos);
+
+      console.log(`📤 Enviado directamente:`, {
+        P1: valor1,
+        P2: valor2,
+        alerta1,
+        alerta2,
+        umbral: configuracion.umbralGas
+      });
+
+      // Enviar notificación si hay alerta
+      if (alerta1 || alerta2) {
+        const notifRef = push(ref(db, 'notificaciones'));
+        await set(notifRef, {
+          tipo: 'alerta',
+          mensaje: `Simulación: Gas detectado en ${alerta1 ? 'Piso 1' : ''} ${alerta1 && alerta2 ? 'y' : ''} ${alerta2 ? 'Piso 2' : ''}`,
+          timestamp: timestamp,
+          leido: false,
+          simulacion: true
+        });
+      }
+    } catch (error) {
+      console.error('❌ Error al enviar datos:', error);
     }
   };
 
@@ -302,8 +358,12 @@ function SimulacionPanel({ onClose, configuracion, ultimaLectura }) {
               <p>Control manual del sistema de detección</p>
             </div>
           </div>
-          <button className="sim-close-btn" onClick={onClose}>
-            <XCircle size={24} />
+          <button
+            className="sim-close-btn"
+            onClick={onClose}
+            title="Cerrar"
+          >
+            ✕
           </button>
         </div>
 

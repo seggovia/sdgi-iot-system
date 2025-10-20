@@ -79,7 +79,7 @@
   padding: 0.75rem;
   border-radius: 16px;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
-  animation: iconPulse 2s ease-in-out infinite;
+  /* 🔥 REMOVIDO: animation: iconPulse */
 }
 
 @keyframes iconPulse {
@@ -115,11 +115,25 @@
   cursor: pointer;
   transition: all 0.3s ease;
   backdrop-filter: blur(10px);
+  flex-shrink: 0;
+  font-size: 28px;
+  font-weight: 300;
+  line-height: 1;
+  font-family: Arial, sans-serif;
+}
+
+.sim-close-btn svg {
+  display: block; /* 🔥 AGREGADO */
 }
 
 .sim-close-btn:hover {
-  background: rgba(255, 255, 255, 0.3);
-  transform: rotate(90deg) scale(1.1);
+  background: rgba(255, 68, 68, 0.3);
+  border-color: rgba(255, 68, 68, 0.5);
+  transform: scale(1.1);
+}
+
+.sim-close-btn:active {
+  transform: scale(0.95);
 }
 
 /* ============================================
@@ -763,4 +777,15 @@
   opacity: 0.5;
   cursor: not-allowed;
   transform: none !important;
+}
+
+.sim-close-btn svg {
+  display: block;
+  stroke: white !important;
+  fill: none !important;
+}
+
+.sim-close-btn svg line {
+  stroke: white !important;
+  stroke-width: 2.5px;
 }
