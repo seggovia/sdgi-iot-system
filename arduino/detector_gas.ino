@@ -7,13 +7,15 @@
 // ============================================
 // CONFIGURACIÓN WIFI Y FIREBASE
 // ============================================
-#define WIFI_SSID "TU_NOMBRE_WIFI"        // ⚠️ CAMBIAR
-#define WIFI_PASSWORD "TU_PASSWORD_WIFI"  // ⚠️ CAMBIAR
+#define WIFI_SSID "OPTI-EE2EC5"
+#define WIFI_PASSWORD "Milo2025"
 
 #define API_KEY "AIzaSyCzj116N3yttGaBGFCKAClWWxzmwFAyLL8"
-#define FIREBASE_PROJECT_ID "sdgi-detector-gas"
-#define USER_EMAIL "tu_email@gmail.com"     // ⚠️ CAMBIAR
-#define USER_PASSWORD "tu_password_seguro"  // ⚠️ CAMBIAR
+#define DATABASE_URL "https://sdgi-detector-gas-default-rtdb.firebaseio.com/" // ⚠️ NUEVO
+
+// ⚠️ OPCIONAL: Autenticación (más seguro)
+// #define USER_EMAIL "tu_email@gmail.com"
+// #define USER_PASSWORD "tu_password"
 
 FirebaseData fbdo;
 FirebaseAuth auth;
@@ -22,20 +24,20 @@ FirebaseConfig config;
 Servo miServo;
 const int SERVO_PIN = 6;
 
-// --- Pines (ACTUALIZADOS) ---
-const int MQ2_PIN = A0;         // Sensor MQ-2 principal (Piso 1)
-const int MQ2_PIN2 = A3;        // Sensor MQ-2 secundario (Piso 2) - CAMBIADO A A3
-const int BUZZER_A0 = 5;        // Buzzer para sensor A0 (Piso 1)
-const int BUZZER_A3 = 3;        // Buzzer para sensor A3 (Piso 2) - NUEVO
-const int LED_PIN = 7;          // LED de alarma general
-const int LED2_PIN = 1;         // LED para sensor A0 (Piso 1)
-const int LED3_PIN = 2;         // LED para sensor A3 (Piso 2)
+// --- Pines ---
+const int MQ2_PIN = A0;
+const int MQ2_PIN2 = A3;
+const int BUZZER_A0 = 5;
+const int BUZZER_A3 = 3;
+const int LED_PIN = 7;
+const int LED2_PIN = 1;
+const int LED3_PIN = 2;
 
-// --- Parámetros (ACTUALIZADOS) ---
+// --- Parámetros ---
 const unsigned long CALIBRACION_MS_1 = 10000UL;
 const unsigned long CALIBRACION_MS_2 = 20000UL;
-int UMBRAL_DELTA = 30;          // MÁS SENSIBLE (antes 60)
-const float ALPHA = 0.5;        // RESPUESTA MÁS RÁPIDA (antes 0.2)
+int UMBRAL_DELTA = 30;
+const float ALPHA = 0.5;
 const int HISTERESIS = 12;
 const unsigned long CONFIRM_ON_MS = 1000UL;
 
@@ -62,7 +64,7 @@ int calib_min_2 = 1024, calib_max_2 = 0;
 
 // Variables Firebase
 unsigned long lastFirebaseUpdate = 0;
-const unsigned long FIREBASE_UPDATE_INTERVAL = 2000;
+const unsigned long FIREBASE_UPDATE_INTERVAL = 5000;
 unsigned long lastConfigCheck = 0;
 const unsigned long CONFIG_CHECK_INTERVAL = 5000;
 
@@ -73,7 +75,6 @@ int buzzerVolumen = 255;
 bool ledPiso1Activo = true;
 bool ledPiso2Activo = true;
 bool servoControlRemoto = false;
-bool modoSimulacion = false;
 
 // Estadísticas
 int totalAlertas = 0;
@@ -127,16 +128,17 @@ void setup() {
     Serial.println("\n❌ Error al conectar WiFi");
   }
 
-  // Configurar Firebase
+  // Configurar Firebase Realtime Database
   config.api_key = API_KEY;
-  auth.user.email = USER_EMAIL;
-  auth.user.password = USER_PASSWORD;
+  config.database_url = DATABASE_URL; // ⚠️ NUEVO
+  
+  // Autenticación anónima (sin email/password)
   config.token_status_callback = tokenStatusCallback;
 
   Firebase.begin(&config, &auth);
   Firebase.reconnectWiFi(true);
 
-  Serial.println("🔥 Conectando a Firebase...");
+  Serial.println("🔥 Conectando a Firebase Realtime DB...");
   
   intentos = 0;
   while (!Firebase.ready() && intentos < 30) {
@@ -146,7 +148,7 @@ void setup() {
   }
 
   if (Firebase.ready()) {
-    Serial.println("\n✅ Firebase conectado!");
+    Serial.println("\n✅ Firebase Realtime DB conectado!");
     actualizarEstadoDispositivo("online");
     leerConfiguracionFirebase();
   } else {
@@ -158,7 +160,6 @@ void setup() {
   Serial.println("\n🎯 Comenzando calibracion de sensores...");
   Serial.println("Sensor A0 (Piso 1): 10s | Sensor A3 (Piso 2): 20s");
 }
-
 // ============================================
 // LOOP PRINCIPAL
 // ============================================
@@ -167,7 +168,7 @@ void loop() {
   int valorGas2 = analogRead(MQ2_PIN2);
   unsigned long ahora = millis();
 
-  // --- CALIBRACIÓN ---
+  // --- CALIBRACIÓN (igual que antes) ---
   if (ahora - inicioCal < CALIBRACION_MS_2) {
     if (ahora - inicioCal < CALIBRACION_MS_1) {
       baseline = (baseline * muestrasCal + valorGas) / (muestrasCal + 1.0);
@@ -264,7 +265,7 @@ void loop() {
     Serial.println("\n✅ Alarma detenida - niveles normales");
   }
 
-  // --- CONTROL DE ACTUADORES INDEPENDIENTES ---
+  // --- CONTROL DE ACTUADORES ---
   controlarActuadores(cond1, cond2);
 
   // --- LEER CONFIGURACIÓN DE FIREBASE ---
@@ -292,26 +293,25 @@ void loop() {
 
   delay(100);
 }
-
 // ============================================
-// FUNCIONES FIREBASE
+// FUNCIONES FIREBASE REALTIME DATABASE
 // ============================================
 
 void enviarDatosFirebase(int sensor1, int sensor2) {
   if (!Firebase.ready()) return;
 
-  FirebaseJson content;
-  String documentPath = "lecturas";
+  FirebaseJson json;
+  String path = "/lecturas/" + String(millis());
   
-  content.set("fields/valorSensor1/integerValue", String(sensor1));
-  content.set("fields/valorSensor2/integerValue", String(sensor2));
-  content.set("fields/sensor1Alerta/booleanValue", alarmaPiso1);
-  content.set("fields/sensor2Alerta/booleanValue", alarmaPiso2);
-  content.set("fields/dispositivo/stringValue", "arduino_001");
-  content.set("fields/timestamp/timestampValue", "now");
+  json.set("valorSensor1", sensor1);
+  json.set("valorSensor2", sensor2);
+  json.set("sensor1Alerta", alarmaPiso1);
+  json.set("sensor2Alerta", alarmaPiso2);
+  json.set("dispositivo", "arduino_001");
+  json.set("timestamp", (int)millis());
 
-  if (Firebase.Firestore.createDocument(&fbdo, FIREBASE_PROJECT_ID, "", documentPath.c_str(), content.raw())) {
-    Serial.println("📤 Datos enviados a Firebase");
+  if (Firebase.RTDB.setJSON(&fbdo, path.c_str(), &json)) {
+    Serial.println("📤 Datos enviados a Realtime DB");
   } else {
     Serial.print("❌ Error Firebase: ");
     Serial.println(fbdo.errorReason());
@@ -321,91 +321,114 @@ void enviarDatosFirebase(int sensor1, int sensor2) {
 void leerConfiguracionFirebase() {
   if (!Firebase.ready()) return;
 
-  String docPath = "configuracion/sistema";
-  
-  if (Firebase.Firestore.getDocument(&fbdo, FIREBASE_PROJECT_ID, "", docPath.c_str())) {
-    FirebaseJson json;
-    json.setJsonData(fbdo.payload());
-    
-    FirebaseJsonData result;
-    
-    if (json.get(result, "fields/umbralGas/integerValue")) {
-      UMBRAL_DELTA = result.to<int>();
+  // Leer umbral de gas
+  if (Firebase.RTDB.getInt(&fbdo, "/configuracion/sistema/umbralGas")) {
+    if (fbdo.dataType() == "int") {
+      int nuevoUmbral = fbdo.intData();
+      if (nuevoUmbral != UMBRAL_DELTA) {
+        UMBRAL_DELTA = nuevoUmbral;
+        Serial.print("⚙️ Umbral actualizado: ");
+        Serial.println(UMBRAL_DELTA);
+      }
     }
-    
-    if (json.get(result, "fields/buzzerPiso1Activo/booleanValue")) {
-      buzzerPiso1Activo = result.to<bool>();
+  }
+
+  // Leer buzzer Piso 1
+  if (Firebase.RTDB.getBool(&fbdo, "/configuracion/sistema/buzzerPiso1Activo")) {
+    if (fbdo.dataType() == "boolean") {
+      buzzerPiso1Activo = fbdo.boolData();
     }
-    
-    if (json.get(result, "fields/buzzerPiso2Activo/booleanValue")) {
-      buzzerPiso2Activo = result.to<bool>();
+  }
+
+  // Leer buzzer Piso 2
+  if (Firebase.RTDB.getBool(&fbdo, "/configuracion/sistema/buzzerPiso2Activo")) {
+    if (fbdo.dataType() == "boolean") {
+      buzzerPiso2Activo = fbdo.boolData();
     }
-    
-    if (json.get(result, "fields/ledPiso1Activo/booleanValue")) {
-      ledPiso1Activo = result.to<bool>();
+  }
+
+  // Leer LED Piso 1
+  if (Firebase.RTDB.getBool(&fbdo, "/configuracion/sistema/ledPiso1Activo")) {
+    if (fbdo.dataType() == "boolean") {
+      ledPiso1Activo = fbdo.boolData();
     }
-    
-    if (json.get(result, "fields/ledPiso2Activo/booleanValue")) {
-      ledPiso2Activo = result.to<bool>();
+  }
+
+  // Leer LED Piso 2
+  if (Firebase.RTDB.getBool(&fbdo, "/configuracion/sistema/ledPiso2Activo")) {
+    if (fbdo.dataType() == "boolean") {
+      ledPiso2Activo = fbdo.boolData();
     }
-    
-    if (json.get(result, "fields/servoAbierto/booleanValue")) {
-      bool nuevoEstado = result.to<bool>();
+  }
+
+  // Leer estado del servo (control remoto)
+  if (Firebase.RTDB.getBool(&fbdo, "/configuracion/sistema/servoAbierto")) {
+    if (fbdo.dataType() == "boolean") {
+      bool nuevoEstado = fbdo.boolData();
       if (nuevoEstado != servoControlRemoto) {
         servoControlRemoto = nuevoEstado;
         miServo.write(servoControlRemoto ? 90 : 0);
         Serial.println(servoControlRemoto ? "🚪 Puerta ABIERTA (remoto)" : "🚪 Puerta CERRADA (remoto)");
       }
     }
-    
-    Serial.println("⚙️ Configuración actualizada desde Firebase");
+  }
+
+  // Leer volumen del buzzer
+  if (Firebase.RTDB.getInt(&fbdo, "/configuracion/sistema/buzzerVolumen")) {
+    if (fbdo.dataType() == "int") {
+      buzzerVolumen = fbdo.intData();
+    }
   }
 }
 
 void enviarNotificacion(String tipo, String mensaje) {
   if (!Firebase.ready()) return;
 
-  FirebaseJson content;
-  String documentPath = "notificaciones";
+  FirebaseJson json;
+  String path = "/notificaciones/" + String(millis());
   
-  content.set("fields/tipo/stringValue", tipo);
-  content.set("fields/mensaje/stringValue", mensaje);
-  content.set("fields/timestamp/timestampValue", "now");
-  content.set("fields/leido/booleanValue", false);
+  json.set("tipo", tipo);
+  json.set("mensaje", mensaje);
+  json.set("timestamp", (int)millis());
+  json.set("leido", false);
 
   if (tipo == "alerta") {
-    if (alarmaPiso1) content.set("fields/piso/stringValue", "Piso 1");
-    if (alarmaPiso2) content.set("fields/piso/stringValue", "Piso 2");
-    content.set("fields/valorGas/integerValue", String((int)(alarmaPiso1 ? ema : ema2)));
+    if (alarmaPiso1) json.set("piso", "Piso 1");
+    if (alarmaPiso2) json.set("piso", "Piso 2");
+    json.set("valorGas", (int)(alarmaPiso1 ? ema : ema2));
   }
 
-  Firebase.Firestore.createDocument(&fbdo, FIREBASE_PROJECT_ID, "", documentPath.c_str(), content.raw());
+  if (Firebase.RTDB.setJSON(&fbdo, path.c_str(), &json)) {
+    Serial.println("📬 Notificación enviada");
+  }
 }
 
 void actualizarEstadisticas() {
   if (!Firebase.ready()) return;
 
-  FirebaseJson content;
-  String docPath = "estadisticas/general";
+  FirebaseJson json;
+  String path = "/estadisticas/general";
   
-  content.set("fields/totalAlertas/integerValue", String(totalAlertas));
-  content.set("fields/alertasPiso1/integerValue", String(alertasPiso1));
-  content.set("fields/alertasPiso2/integerValue", String(alertasPiso2));
-  content.set("fields/ultimaActualizacion/timestampValue", "now");
+  json.set("totalAlertas", totalAlertas);
+  json.set("alertasPiso1", alertasPiso1);
+  json.set("alertasPiso2", alertasPiso2);
+  json.set("ultimaActualizacion", (int)millis());
 
-  Firebase.Firestore.patchDocument(&fbdo, FIREBASE_PROJECT_ID, "", docPath.c_str(), content.raw(), "totalAlertas,alertasPiso1,alertasPiso2,ultimaActualizacion");
+  if (Firebase.RTDB.updateNode(&fbdo, path.c_str(), &json)) {
+    Serial.println("📊 Estadísticas actualizadas");
+  }
 }
 
 void actualizarEstadoDispositivo(String estado) {
   if (!Firebase.ready()) return;
 
-  FirebaseJson content;
-  String docPath = "dispositivos/arduino_001";
+  FirebaseJson json;
+  String path = "/dispositivos/arduino_001";
   
-  content.set("fields/estado/stringValue", estado);
-  content.set("fields/ultimaConexion/timestampValue", "now");
+  json.set("estado", estado);
+  json.set("ultimaConexion", (int)millis());
 
-  Firebase.Firestore.patchDocument(&fbdo, FIREBASE_PROJECT_ID, "", docPath.c_str(), content.raw(), "estado,ultimaConexion");
+  Firebase.RTDB.updateNode(&fbdo, path.c_str(), &json);
 }
 
 void controlarActuadores(bool cond1, bool cond2) {
@@ -428,7 +451,7 @@ void controlarActuadores(bool cond1, bool cond2) {
   digitalWrite(LED2_PIN, (cond1 && ledPiso1Activo) ? HIGH : LOW);  // LED Piso 1
   digitalWrite(LED3_PIN, (cond2 && ledPiso2Activo) ? HIGH : LOW);  // LED Piso 2
 
-  // Servo automático en alarma
+  // Servo automático en alarma (solo si no está controlado remotamente)
   if ((cond1 || cond2) && !servoAbierto && !servoControlRemoto) {
     miServo.write(90);
     servoAbierto = true;

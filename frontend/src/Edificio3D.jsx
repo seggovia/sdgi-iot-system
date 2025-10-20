@@ -2,7 +2,7 @@ import { useRef, useState, useEffect } from 'react';
 import { Canvas, useFrame } from '@react-three/fiber';
 import { OrbitControls, Text } from '@react-three/drei';
 import { db } from './firebase';
-import { doc, getDoc, setDoc } from 'firebase/firestore';
+import { ref, get, set } from 'firebase/database';
 
 // Componente del edificio
 function Edificio({ piso1Alerta, piso2Alerta, puertaAbierta, buzzerPiso1, buzzerPiso2, ledPiso1, ledPiso2, posiciones }) {
@@ -368,20 +368,20 @@ function ConfirmModal({ isOpen, onConfirm, onCancel, title, message }) {
           <div className="modal-icon-warning">⚠️</div>
           <h3>{title}</h3>
         </div>
-        
+
         <div className="modal-body">
           <p>{message}</p>
         </div>
-        
+
         <div className="modal-footer">
-          <button 
-            className="modal-btn modal-btn-cancel" 
+          <button
+            className="modal-btn modal-btn-cancel"
             onClick={onCancel}
           >
             ✕ Cancelar
           </button>
-          <button 
-            className="modal-btn modal-btn-confirm" 
+          <button
+            className="modal-btn modal-btn-confirm"
             onClick={onConfirm}
           >
             ✓ Activar Modo Edición
@@ -424,16 +424,16 @@ export default function Edificio3D({
   useEffect(() => {
     const cargarPosiciones = async () => {
       try {
-        const docRef = doc(db, 'edificioPosiciones', 'posicionesEdificio');
-        const docSnap = await getDoc(docRef);
-        
-        if (docSnap.exists()) {
-          const data = docSnap.data();
+        const posRef = ref(db, 'edificioPosiciones/posicionesEdificio');
+        const snapshot = await get(posRef);
+
+        if (snapshot.exists()) {
+          const data = snapshot.val();
           setPosiciones(data);
-          console.log('✅ Posiciones cargadas desde Firestore:', data);
+          console.log('✅ Posiciones cargadas desde Realtime DB:', data);
         } else {
           console.log('ℹ️ No hay posiciones guardadas, usando valores por defecto');
-          await setDoc(docRef, posicionesDefault);
+          await set(posRef, posicionesDefault);
         }
       } catch (error) {
         console.error('❌ Error al cargar posiciones:', error);
@@ -450,15 +450,16 @@ export default function Edificio3D({
   // ============================================
   const guardarPosiciones = async (nuevasPosiciones) => {
     if (!modoEdicion) return;
-    
+
     try {
-      const docRef = doc(db, 'edificioPosiciones', 'posicionesEdificio');
-      await setDoc(docRef, nuevasPosiciones);
-      console.log('💾 Posiciones guardadas en Firestore:', nuevasPosiciones);
+      const posRef = ref(db, 'edificioPosiciones/posicionesEdificio');
+      await set(posRef, nuevasPosiciones);
+      console.log('💾 Posiciones guardadas en Realtime DB:', nuevasPosiciones);
     } catch (error) {
       console.error('❌ Error al guardar posiciones:', error);
     }
   };
+
 
   // ============================================
   // ACTUALIZAR POSICIÓN CON AUTOSAVE
@@ -471,7 +472,7 @@ export default function Edificio3D({
         [eje]: parseFloat(valor)
       }
     };
-    
+
     setPosiciones(nuevasPosiciones);
     guardarPosiciones(nuevasPosiciones);
   };
@@ -536,7 +537,7 @@ export default function Edificio3D({
       {/* PANEL DE CONTROLES DESPLEGABLE */}
       <div className={`controles-panel ${mostrarControles ? 'open' : ''}`}>
         <div className="controles-content">
-          
+
           {/* TOGGLE MODO EDICIÓN */}
           <div className="modo-edicion-section">
             <div className="modo-edicion-header">
@@ -553,7 +554,7 @@ export default function Edificio3D({
                 <span className="slider-modo-edicion"></span>
               </label>
             </div>
-            
+
             {modoEdicion && (
               <div className="modo-edicion-badge">
                 <span className="badge-icon">✏️</span>

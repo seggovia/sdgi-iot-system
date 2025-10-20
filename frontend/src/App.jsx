@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { db } from './firebase';
-import { collection, doc, onSnapshot, updateDoc, query, orderBy, limit } from 'firebase/firestore';
+import { ref, onValue, set, update } from 'firebase/database';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import {
   Flame,
@@ -19,10 +19,12 @@ import {
 } from 'lucide-react';
 import Edificio3D from './Edificio3D';
 import './App.css';
+import SimulacionPanel from './SimulacionPanel';
 
 function App() {
   // ==================== ESTADOS PRINCIPALES ====================
   const [notificacionActiva, setNotificacionActiva] = useState(null);
+  const [mostrarPanelSimulacion, setMostrarPanelSimulacion] = useState(false);
 
   const mostrarNotificacion = (mensaje, tipo = 'success') => {
     setNotificacionActiva({ mensaje, tipo });
@@ -51,12 +53,12 @@ function App() {
     sensibilidadNoche: 100
   });
 
-  // Datos en tiempo real - MODIFICADO PARA 2 SENSORES
+  // Datos en tiempo real
   const [ultimaLectura, setUltimaLectura] = useState(null);
   const [lecturas, setLecturas] = useState([]);
   const [dispositivo, setDispositivo] = useState(null);
 
-  // NUEVO: Estados separados para cada piso
+  // Estados separados para cada piso
   const [piso1Alerta, setPiso1Alerta] = useState(false);
   const [piso2Alerta, setPiso2Alerta] = useState(false);
   const [notificaciones, setNotificaciones] = useState([]);
@@ -76,15 +78,30 @@ function App() {
   const [configGlobalTemp, setConfigGlobalTemp] = useState({});
   const [vistaActual, setVistaActual] = useState('general');
 
-  // ==================== EFECTOS (Firebase Listeners) ====================
+  // ==================== EFECTOS (Realtime Database) ====================
 
   // Escuchar configuración del sistema
   useEffect(() => {
-    const unsubscribe = onSnapshot(doc(db, 'configuracion', 'sistema'), (doc) => {
-      if (doc.exists()) {
-        const data = doc.data();
+    const configRef = ref(db, 'configuracion/sistema');
+    const unsubscribe = onValue(configRef, (snapshot) => {
+      if (snapshot.exists()) {
+        const data = snapshot.val();
         setConfiguracion(data);
         setConfigTemp(data);
+      } else {
+        // Crear configuración por defecto
+        const defaultConfig = {
+          umbralGas: 60,
+          intervaloLectura: 100,
+          buzzerPiso1Activo: true,
+          buzzerPiso2Activo: true,
+          buzzerVolumen: 255,
+          ledPiso1Activo: true,
+          ledPiso2Activo: true,
+          servoAbierto: false,
+          modoSimulacion: false
+        };
+        set(configRef, defaultConfig);
       }
     });
     return () => unsubscribe();
@@ -92,38 +109,47 @@ function App() {
 
   // Escuchar configuración global
   useEffect(() => {
-    const unsubscribe = onSnapshot(doc(db, 'configuracion', 'global'), (doc) => {
-      if (doc.exists()) {
-        const data = doc.data();
+    const configGlobalRef = ref(db, 'configuracion/global');
+    const unsubscribe = onValue(configGlobalRef, (snapshot) => {
+      if (snapshot.exists()) {
+        const data = snapshot.val();
         setConfigGlobal(data);
         setConfigGlobalTemp(data);
+      } else {
+        // Crear configuración global por defecto
+        const defaultGlobal = {
+          modoProgramado: false,
+          horarioInicioSensible: "08:00",
+          horarioFinSensible: "18:00",
+          sensibilidadDia: 60,
+          sensibilidadNoche: 100
+        };
+        set(configGlobalRef, defaultGlobal);
       }
     });
     return () => unsubscribe();
   }, []);
 
-  // MODIFICADO: Escuchar lecturas históricas (ahora con 2 sensores)
+  // Escuchar lecturas (últimas 50)
   useEffect(() => {
-    const q = query(collection(db, 'lecturas'), orderBy('timestamp', 'desc'), limit(50));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const lecturasData = [];
-      snapshot.forEach((doc) => {
-        const data = doc.data();
-        lecturasData.push({
-          id: doc.id,
-          ...data,
-          timestamp: data.timestamp?.toDate?.() || new Date()
-        });
-      });
-      setLecturas(lecturasData.reverse());
+    const lecturasRef = ref(db, 'lecturas');
+    const unsubscribe = onValue(lecturasRef, (snapshot) => {
+      if (snapshot.exists()) {
+        const data = snapshot.val();
+        const lecturasArray = Object.keys(data).map(key => ({
+          id: key,
+          ...data[key],
+          timestamp: new Date(parseInt(key)) // Usar el timestamp como ID
+        })).sort((a, b) => a.timestamp - b.timestamp).slice(-50); // Últimas 50
 
-      if (lecturasData.length > 0) {
-        const ultima = lecturasData[lecturasData.length - 1];
-        setUltimaLectura(ultima);
+        setLecturas(lecturasArray);
 
-        // NUEVO: Detectar alertas por piso
-        setPiso1Alerta(ultima.sensor1Alerta || false);
-        setPiso2Alerta(ultima.sensor2Alerta || false);
+        if (lecturasArray.length > 0) {
+          const ultima = lecturasArray[lecturasArray.length - 1];
+          setUltimaLectura(ultima);
+          setPiso1Alerta(ultima.sensor1Alerta || false);
+          setPiso2Alerta(ultima.sensor2Alerta || false);
+        }
       }
     });
     return () => unsubscribe();
@@ -131,48 +157,64 @@ function App() {
 
   // Escuchar estado del dispositivo
   useEffect(() => {
-    const unsubscribe = onSnapshot(doc(db, 'dispositivos', 'arduino_001'), (doc) => {
-      if (doc.exists()) {
-        setDispositivo(doc.data());
+    const dispositivoRef = ref(db, 'dispositivos/arduino_001');
+    const unsubscribe = onValue(dispositivoRef, (snapshot) => {
+      if (snapshot.exists()) {
+        setDispositivo(snapshot.val());
+      } else {
+        // Crear dispositivo por defecto
+        set(dispositivoRef, {
+          estado: 'offline',
+          ultimaConexion: Date.now()
+        });
       }
     });
     return () => unsubscribe();
   }, []);
 
-  // Escuchar notificaciones
+  // Escuchar notificaciones (últimas 10)
   useEffect(() => {
-    const q = query(collection(db, 'notificaciones'), orderBy('timestamp', 'desc'), limit(10));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const notifs = [];
-      snapshot.forEach((doc) => {
-        const data = doc.data();
-        notifs.push({
-          id: doc.id,
-          ...data,
-          timestamp: data.timestamp?.toDate?.() || new Date()
-        });
-      });
-      setNotificaciones(notifs);
+    const notificacionesRef = ref(db, 'notificaciones');
+    const unsubscribe = onValue(notificacionesRef, (snapshot) => {
+      if (snapshot.exists()) {
+        const data = snapshot.val();
+        const notifsArray = Object.keys(data).map(key => ({
+          id: key,
+          ...data[key],
+          timestamp: new Date(data[key].timestamp)
+        })).sort((a, b) => b.timestamp - a.timestamp).slice(0, 10); // Últimas 10
+
+        setNotificaciones(notifsArray);
+      }
     });
     return () => unsubscribe();
   }, []);
 
   // Escuchar estadísticas
   useEffect(() => {
-    const unsubscribe = onSnapshot(doc(db, 'estadisticas', 'general'), (doc) => {
-      if (doc.exists()) {
-        setEstadisticas(doc.data());
+    const estadisticasRef = ref(db, 'estadisticas/general');
+    const unsubscribe = onValue(estadisticasRef, (snapshot) => {
+      if (snapshot.exists()) {
+        setEstadisticas(snapshot.val());
+      } else {
+        // Crear estadísticas por defecto
+        set(estadisticasRef, {
+          totalAlertas: 0,
+          tiempoTotalAlerta: 0,
+          alertasPiso1: 0,
+          alertasPiso2: 0
+        });
       }
     });
     return () => unsubscribe();
   }, []);
-
   // ==================== FUNCIONES ====================
 
   // Guardar configuración del sistema
   const guardarConfiguracion = async () => {
     try {
-      await updateDoc(doc(db, 'configuracion', 'sistema'), configTemp);
+      const configRef = ref(db, 'configuracion/sistema');
+      await update(configRef, configTemp);
       setEditando(false);
       mostrarNotificacion('Configuración actualizada correctamente', 'success');
     } catch (error) {
@@ -184,7 +226,8 @@ function App() {
   // Guardar configuración global
   const guardarConfigGlobal = async () => {
     try {
-      await updateDoc(doc(db, 'configuracion', 'global'), configGlobalTemp);
+      const configGlobalRef = ref(db, 'configuracion/global');
+      await update(configGlobalRef, configGlobalTemp);
       setEditandoGlobal(false);
       mostrarNotificacion('Configuración global actualizada', 'success');
     } catch (error) {
@@ -197,7 +240,8 @@ function App() {
   const toggleServo = async () => {
     try {
       const nuevoEstado = !configuracion.servoAbierto;
-      await updateDoc(doc(db, 'configuracion', 'sistema'), {
+      const configRef = ref(db, 'configuracion/sistema');
+      await update(configRef, {
         servoAbierto: nuevoEstado
       });
       mostrarNotificacion(
@@ -213,7 +257,8 @@ function App() {
   const toggleSimulacion = async () => {
     try {
       const nuevoEstado = !configuracion.modoSimulacion;
-      await updateDoc(doc(db, 'configuracion', 'sistema'), {
+      const configRef = ref(db, 'configuracion/sistema');
+      await update(configRef, {
         modoSimulacion: nuevoEstado
       });
       mostrarNotificacion(
@@ -226,7 +271,7 @@ function App() {
     }
   };
 
-  // MODIFICADO: Datos para el gráfico (ahora con ambos sensores)
+  // Datos para el gráfico
   const datosGrafico = lecturas.slice(-30).map((lectura, index) => ({
     nombre: `#${index + 1}`,
     sensor1: lectura.valorSensor1 || lectura.valorGas || 0,
@@ -239,8 +284,9 @@ function App() {
   const porcentajeAlerta = estadisticas.totalAlertas > 0
     ? ((estadisticas.tiempoTotalAlerta / (estadisticas.totalAlertas * 60)) * 100).toFixed(1)
     : 0;
+
   // ==================== RENDER ====================
-  // ==================== RENDER ====================
+
   return (
     <div className="app">
       {/* Header */}
@@ -425,11 +471,11 @@ function App() {
                 </button>
 
                 <button
-                  className={`control-btn ${configuracion.modoSimulacion ? 'active' : ''}`}
-                  onClick={toggleSimulacion}
+                  className={`control-btn ${mostrarPanelSimulacion ? 'active' : ''}`}
+                  onClick={() => setMostrarPanelSimulacion(true)}
                 >
                   <PlayCircle size={24} />
-                  <span>{configuracion.modoSimulacion ? 'Modo Real' : 'Modo Simulación'}</span>
+                  <span>Abrir Panel de Simulación</span>
                 </button>
 
                 <div className="control-info">
@@ -446,7 +492,7 @@ function App() {
                 </div>
               </div>
             </div>
-             {/* Gráfico con ambos sensores */}
+            {/* Gráfico con ambos sensores */}
             <div className="grafico-container">
               <h2 className="section-title">
                 <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -899,6 +945,15 @@ function App() {
         <div className={`alert-${notificacionActiva.tipo}`}>
           {notificacionActiva.mensaje}
         </div>
+      )}
+      
+      {/* PANEL DE SIMULACIÓN */}
+      {mostrarPanelSimulacion && (
+        <SimulacionPanel
+          onClose={() => setMostrarPanelSimulacion(false)}
+          configuracion={configuracion}
+          ultimaLectura={ultimaLectura}
+        />
       )}
     </div>
   );
