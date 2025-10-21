@@ -1,26 +1,24 @@
-// Codigo de 20 octubre version 3.0
-#include <WiFiS3.h>
-#include <Firebase_ESP_Client.h>
-#include <addons/TokenHelper.h>
-#include <addons/RTDBHelper.h>
 #include <Servo.h>
+#include <WiFiS3.h>
+#include <ArduinoHttpClient.h>
 
-// ============================================
-// CONFIGURACIÓN WIFI Y FIREBASE
-// ============================================
+// --- Configuración WiFi y Firebase ---
 #define WIFI_SSID "OPTI-EE2EC5"
 #define WIFI_PASSWORD "Milo2025"
+#define FIREBASE_HOST "sdgi-detector-gas-default-rtdb.firebaseio.com"
 
-#define API_KEY "AIzaSyCzj116N3yttGaBGFCKAClWWxzmwFAyLL8"
-#define DATABASE_URL "https://sdgi-detector-gas-default-rtdb.firebaseio.com/" // ⚠️ NUEVO
+WiFiSSLClient wifi;
+HttpClient client = HttpClient(wifi, FIREBASE_HOST, 443);
 
-// ⚠️ OPCIONAL: Autenticación (más seguro)
-// #define USER_EMAIL "tu_email@gmail.com"
-// #define USER_PASSWORD "tu_password"
-
-FirebaseData fbdo;
-FirebaseAuth auth;
-FirebaseConfig config;
+// 🔥 MEJORADO: Intervalos más frecuentes + nuevos watchdogs
+unsigned long ultimoEnvio = 0;
+unsigned long ultimoChequeoConfig = 0;
+unsigned long ultimoHeartbeat = 0;
+unsigned long ultimoChequeoWiFi = 0;
+const unsigned long INTERVALO_ENVIO = 1000;
+const unsigned long INTERVALO_CONFIG = 3000;
+const unsigned long INTERVALO_HEARTBEAT = 2000;
+const unsigned long INTERVALO_CHEQUEO_WIFI = 5000;
 
 Servo miServo;
 const int SERVO_PIN = 6;
@@ -34,18 +32,25 @@ const int LED_PIN = 7;
 const int LED2_PIN = 1;
 const int LED3_PIN = 2;
 
-// --- Parámetros ---
+// --- Parámetros CONFIGURABLES desde Firebase ---
+int UMBRAL_DELTA = 30;
+int BUZZER_VOLUMEN = 255;
+bool BUZZER_PISO1_ACTIVO = true;
+bool BUZZER_PISO2_ACTIVO = true;
+bool LED_PISO1_ACTIVO = true;
+bool LED_PISO2_ACTIVO = true;
+bool SERVO_DEBE_ABRIR = false;
+int INTERVALO_LECTURA = 100;
+
+// --- Parámetros fijos ---
 const unsigned long CALIBRACION_MS_1 = 10000UL;
 const unsigned long CALIBRACION_MS_2 = 20000UL;
-int UMBRAL_DELTA = 30;
 const float ALPHA = 0.5;
 const int HISTERESIS = 12;
 const unsigned long CONFIRM_ON_MS = 1000UL;
 
 // Estado de alarma
 bool alarma = false;
-bool alarmaPiso1 = false;
-bool alarmaPiso2 = false;
 float baseline = 0.0;
 float ema = 0.0;
 int muestrasCal = 0;
@@ -59,35 +64,361 @@ bool sensor2_fault = false;
 unsigned long inicioCal = 0;
 unsigned long posibleEncendidoInicio = 0;
 bool servoAbierto = false;
-
+bool servoAbiertoManualmente = false;
 int calib_min_1 = 1024, calib_max_1 = 0;
 int calib_min_2 = 1024, calib_max_2 = 0;
 
-// Variables Firebase
-unsigned long lastFirebaseUpdate = 0;
-const unsigned long FIREBASE_UPDATE_INTERVAL = 5000;
-unsigned long lastConfigCheck = 0;
-const unsigned long CONFIG_CHECK_INTERVAL = 5000;
+// Variables para timestamp Unix real
+unsigned long tiempoUnixBase = 0;
+unsigned long millisInicioUnix = 0;
+bool timestampSincronizado = false;
 
-// Configuración desde Firebase
-bool buzzerPiso1Activo = true;
-bool buzzerPiso2Activo = true;
-int buzzerVolumen = 255;
-bool ledPiso1Activo = true;
-bool ledPiso2Activo = true;
-bool servoControlRemoto = false;
+// FUNCION: Obtener timestamp Unix actual
+unsigned long getTimestampUnix() {
+  // Timestamp en MILISEGUNDOS (formato JavaScript/Firebase)
+  // 1 enero 2025 00:00:00 UTC = 1735689600000
+  unsigned long long base = 1735689600000ULL;
+  return base + millis();
+}
 
-// Estadísticas
-int totalAlertas = 0;
-int alertasPiso1 = 0;
-int alertasPiso2 = 0;
-
-// ============================================
-// SETUP
-// ============================================
-void setup() {
-  Serial.begin(115200);
+// FUNCION: Sincronizar tiempo con Firebase
+void sincronizarTiempo() {
+  if (WiFi.status() != WL_CONNECTED) return;
   
+  Serial.println("Sincronizando tiempo con Firebase...");
+  
+  client.beginRequest();
+  client.get("/lecturas.json?orderBy=\"$key\"&limitToLast=1");
+  client.endRequest();
+  
+  int statusCode = client.responseStatusCode();
+  String response = client.responseBody();
+  
+  if (statusCode == 200 && response.length() > 10) {
+    int idx = response.indexOf(":{");
+    if (idx > 5) {
+      String timestampStr = response.substring(2, idx);
+      unsigned long timestamp = timestampStr.toInt();
+      
+      if (timestamp > 1000000000UL) {
+        tiempoUnixBase = timestamp;
+        millisInicioUnix = millis();
+        timestampSincronizado = true;
+        Serial.println("Tiempo sincronizado correctamente");
+        return;
+      }
+    }
+  }
+  
+  tiempoUnixBase = 1735689600000UL;
+  millisInicioUnix = millis();
+  timestampSincronizado = true;
+  Serial.println("Usando tiempo estimado");
+}
+
+// NUEVA FUNCION: Watchdog WiFi con reconexion automatica
+void verificarConexionWiFi() {
+  unsigned long ahora = millis();
+  if (ahora - ultimoChequeoWiFi < INTERVALO_CHEQUEO_WIFI) return;
+  
+  ultimoChequeoWiFi = ahora;
+  
+  if (WiFi.status() != WL_CONNECTED) {
+    Serial.println("WiFi desconectado. Reconectando...");
+    
+    // Parpadear LED para indicar reconexion
+    for (int i = 0; i < 3; i++) {
+      digitalWrite(LED_PIN, HIGH);
+      delay(100);
+      digitalWrite(LED_PIN, LOW);
+      delay(100);
+    }
+    
+    WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+    
+    int intentos = 0;
+    while (WiFi.status() != WL_CONNECTED && intentos < 10) {
+      Serial.print(".");
+      delay(500);
+      intentos++;
+    }
+    
+    if (WiFi.status() == WL_CONNECTED) {
+      Serial.println("\nWiFi reconectado");
+      Serial.print("IP: ");
+      Serial.println(WiFi.localIP());
+      sincronizarTiempo();
+    } else {
+      Serial.println("\nFallo reconexion WiFi");
+    }
+  }
+}
+
+// NUEVA FUNCION: Enviar datos durante calibracion
+void enviarDatosCalibracion() {
+  if (WiFi.status() != WL_CONNECTED) return;
+  
+  unsigned long timestampUnix = getTimestampUnix();
+  
+  String json = "{";
+  json += "\"dispositivo\":\"arduino_001\",";
+  json += "\"timestamp\":" + String(timestampUnix) + ",";
+  json += "\"valorSensor1\":" + String(analogRead(MQ2_PIN)) + ",";
+  json += "\"valorSensor2\":" + String(analogRead(MQ2_PIN2)) + ",";
+  json += "\"sensor1Alerta\":false,";
+  json += "\"sensor2Alerta\":false,";
+  json += "\"alarmaGeneral\":false,";
+  json += "\"calibrando\":true,";
+  json += "\"progresoCalibracion\":" + String((muestrasCal2 * 100) / 200) + ",";
+  json += "\"baseline1\":" + String((int)baseline) + ",";
+  json += "\"baseline2\":" + String((int)baseline2) + ",";
+  json += "\"buzzer1Estado\":false,";
+  json += "\"buzzer2Estado\":false,";
+  json += "\"led1Estado\":false,";
+  json += "\"led2Estado\":false,";
+  json += "\"ledGeneralEstado\":false,";
+  json += "\"servoAbierto\":false,";
+  json += "\"servoAngulo\":0,";
+  json += "\"umbralActivo\":" + String(UMBRAL_DELTA) + ",";
+  json += "\"sensor2Fault\":false";
+  json += "}";
+  
+  String path = "/lecturas/" + String(timestampUnix) + ".json";
+  
+  client.beginRequest();
+  client.put(path.c_str());
+  client.sendHeader("Content-Type", "application/json");
+  client.sendHeader("Content-Length", json.length());
+  client.beginBody();
+  client.print(json);
+  client.endRequest();
+  
+  int statusCode = client.responseStatusCode();
+  client.responseBody();
+  
+  if (statusCode == 200) {
+    Serial.println("Calibracion: Datos enviados");
+  }
+}
+
+// NUEVA FUNCION: Heartbeat (senal de vida cada 2 segundos)
+void enviarHeartbeat() {
+  if (WiFi.status() != WL_CONNECTED) return;
+  
+  unsigned long ahora = millis();
+  if (ahora - ultimoHeartbeat < INTERVALO_HEARTBEAT) return;
+  
+  ultimoHeartbeat = ahora;
+  
+  String path = "/dispositivos/arduino_001.json";
+  String json = "{";
+  json += "\"estado\":\"online\",";
+  json += "\"ultimaConexion\":" + String(getTimestampUnix()) + ",";
+  json += "\"rssi\":" + String(WiFi.RSSI());
+  json += "}";
+  
+  client.beginRequest();
+  client.patch(path.c_str());
+  client.sendHeader("Content-Type", "application/json");
+  client.sendHeader("Content-Length", json.length());
+  client.beginBody();
+  client.print(json);
+  client.endRequest();
+  
+  client.responseStatusCode();
+  client.responseBody();
+}
+
+// Leer configuracion desde Firebase
+void leerConfiguracionFirebase() {
+  if (WiFi.status() != WL_CONNECTED) return;
+  
+  unsigned long ahora = millis();
+  if (ahora - ultimoChequeoConfig < INTERVALO_CONFIG) return;
+  
+  ultimoChequeoConfig = ahora;
+  
+  client.beginRequest();
+  client.get("/configuracion/sistema.json");
+  client.endRequest();
+  
+  int statusCode = client.responseStatusCode();
+  String response = client.responseBody();
+  
+  if (statusCode == 200 && response.length() > 10) {
+    Serial.println("Leyendo configuracion de Firebase...");
+    
+    // Parsear umbralGas
+    int idx = response.indexOf("\"umbralGas\":");
+    if (idx > 0) {
+      int valorInicio = idx + 12;
+      int valorFin = response.indexOf(",", valorInicio);
+      if (valorFin < 0) valorFin = response.indexOf("}", valorInicio);
+      String valorStr = response.substring(valorInicio, valorFin);
+      int nuevoUmbral = valorStr.toInt();
+      if (nuevoUmbral > 0 && nuevoUmbral != UMBRAL_DELTA) {
+        UMBRAL_DELTA = nuevoUmbral;
+        Serial.print("  Umbral actualizado: ");
+        Serial.println(UMBRAL_DELTA);
+      }
+    }
+    
+    // Parsear buzzerPiso1Activo
+    idx = response.indexOf("\"buzzerPiso1Activo\":");
+    if (idx > 0) {
+      bool nuevo = response.substring(idx + 20, idx + 24) == "true";
+      if (nuevo != BUZZER_PISO1_ACTIVO) {
+        BUZZER_PISO1_ACTIVO = nuevo;
+        Serial.print("  Buzzer Piso 1: ");
+        Serial.println(BUZZER_PISO1_ACTIVO ? "ON" : "OFF");
+      }
+    }
+    
+    // Parsear buzzerPiso2Activo
+    idx = response.indexOf("\"buzzerPiso2Activo\":");
+    if (idx > 0) {
+      bool nuevo = response.substring(idx + 20, idx + 24) == "true";
+      if (nuevo != BUZZER_PISO2_ACTIVO) {
+        BUZZER_PISO2_ACTIVO = nuevo;
+        Serial.print("  Buzzer Piso 2: ");
+        Serial.println(BUZZER_PISO2_ACTIVO ? "ON" : "OFF");
+      }
+    }
+    
+    // Parsear ledPiso1Activo
+    idx = response.indexOf("\"ledPiso1Activo\":");
+    if (idx > 0) {
+      bool nuevo = response.substring(idx + 17, idx + 21) == "true";
+      if (nuevo != LED_PISO1_ACTIVO) {
+        LED_PISO1_ACTIVO = nuevo;
+        Serial.print("  LED Piso 1: ");
+        Serial.println(LED_PISO1_ACTIVO ? "ON" : "OFF");
+      }
+    }
+    
+    // Parsear ledPiso2Activo
+    idx = response.indexOf("\"ledPiso2Activo\":");
+    if (idx > 0) {
+      bool nuevo = response.substring(idx + 17, idx + 21) == "true";
+      if (nuevo != LED_PISO2_ACTIVO) {
+        LED_PISO2_ACTIVO = nuevo;
+        Serial.print("  LED Piso 2: ");
+        Serial.println(LED_PISO2_ACTIVO ? "ON" : "OFF");
+      }
+    }
+    
+    // Parsear servoAbierto
+    idx = response.indexOf("\"servoAbierto\":");
+    if (idx > 0) {
+      bool nuevo = response.substring(idx + 15, idx + 19) == "true";
+      if (nuevo != SERVO_DEBE_ABRIR) {
+        SERVO_DEBE_ABRIR = nuevo;
+        Serial.print("  Servo: ");
+        Serial.println(SERVO_DEBE_ABRIR ? "ABRIR" : "CERRAR");
+      }
+    }
+    
+    // Parsear buzzerVolumen
+    idx = response.indexOf("\"buzzerVolumen\":");
+    if (idx > 0) {
+      int valorInicio = idx + 16;
+      int valorFin = response.indexOf(",", valorInicio);
+      if (valorFin < 0) valorFin = response.indexOf("}", valorInicio);
+      String valorStr = response.substring(valorInicio, valorFin);
+      int nuevo = valorStr.toInt();
+      if (nuevo >= 0 && nuevo <= 255 && nuevo != BUZZER_VOLUMEN) {
+        BUZZER_VOLUMEN = nuevo;
+        Serial.print("  Volumen: ");
+        Serial.println(BUZZER_VOLUMEN);
+      }
+    }
+  }
+}
+
+// Enviar TODO el estado a Firebase
+void enviarDatosFirebase() {
+  if (WiFi.status() != WL_CONNECTED) return;
+  
+  unsigned long ahora = millis();
+  if (ahora - ultimoEnvio < INTERVALO_ENVIO) return;
+  
+  ultimoEnvio = ahora;
+  
+  // Determinar estados actuales
+  bool cond1 = (ema > baseline + UMBRAL_DELTA);
+  bool cond2 = (!sensor2_fault) && (ema2 > baseline2 + UMBRAL_DELTA);
+  
+  bool buzzer1Activo = BUZZER_PISO1_ACTIVO && cond1;
+  bool buzzer2Activo = BUZZER_PISO2_ACTIVO && cond2;
+  bool led1Activo = LED_PISO1_ACTIVO && cond1;
+  bool led2Activo = LED_PISO2_ACTIVO && cond2;
+  
+  unsigned long timestampUnix = getTimestampUnix();
+
+  String json = "{";
+  json += "\"dispositivo\":\"arduino_001\",";
+  json += "\"timestamp\":" + String(timestampUnix) + ",";
+  
+  // Valores de sensores
+  json += "\"valorSensor1\":" + String((int)ema) + ",";
+  json += "\"valorSensor2\":" + String((int)ema2) + ",";
+  json += "\"valorRawSensor1\":" + String(analogRead(MQ2_PIN)) + ",";
+  json += "\"valorRawSensor2\":" + String(analogRead(MQ2_PIN2)) + ",";
+  
+  // Estados de alerta
+  json += "\"sensor1Alerta\":" + String(cond1 ? "true" : "false") + ",";
+  json += "\"sensor2Alerta\":" + String(cond2 ? "true" : "false") + ",";
+  json += "\"alarmaGeneral\":" + String(alarma ? "true" : "false") + ",";
+  
+  // Estados de actuadores
+  json += "\"buzzer1Estado\":" + String(buzzer1Activo ? "true" : "false") + ",";
+  json += "\"buzzer2Estado\":" + String(buzzer2Activo ? "true" : "false") + ",";
+  json += "\"led1Estado\":" + String(led1Activo ? "true" : "false") + ",";
+  json += "\"led2Estado\":" + String(led2Activo ? "true" : "false") + ",";
+  json += "\"ledGeneralEstado\":" + String(alarma ? "true" : "false") + ",";
+  json += "\"servoAbierto\":" + String(servoAbierto ? "true" : "false") + ",";
+  json += "\"servoAngulo\":" + String(servoAbierto ? 90 : 0) + ",";
+  
+  // Configuracion activa
+  json += "\"umbralActivo\":" + String(UMBRAL_DELTA) + ",";
+  json += "\"baseline1\":" + String((int)baseline) + ",";
+  json += "\"baseline2\":" + String((int)baseline2) + ",";
+  json += "\"sensor2Fault\":" + String(sensor2_fault ? "true" : "false");
+  
+  json += "}";
+  
+  String path = "/lecturas/" + String(timestampUnix) + ".json";
+  
+  client.beginRequest();
+  client.put(path.c_str());
+  client.sendHeader("Content-Type", "application/json");
+  client.sendHeader("Content-Length", json.length());
+  client.beginBody();
+  client.print(json);
+  client.endRequest();
+  
+  int statusCode = client.responseStatusCode();
+  String response = client.responseBody();
+  
+ if (statusCode == 200) {
+  Serial.println("✅ Firebase: Datos enviados OK");
+  Serial.print("   Timestamp: "); Serial.println(timestampUnix);
+  Serial.print("   S1: "); Serial.print((int)ema);
+  Serial.print(" | S2: "); Serial.println((int)ema2);
+} else if (statusCode == 401) {
+  Serial.println("❌ Firebase: Error 401 - Necesita autenticación");
+  Serial.println("   Solución: Cambia reglas de Firebase a público");
+} else if (statusCode == 404) {
+  Serial.println("❌ Firebase: Error 404 - Ruta incorrecta");
+} else {
+  Serial.print("❌ Firebase: Error ");
+  Serial.println(statusCode);
+  Serial.print("   Respuesta: ");
+  Serial.println(response);
+
+}}
+void setup() {
+  Serial.begin(9600);
   pinMode(BUZZER_A0, OUTPUT);
   pinMode(BUZZER_A3, OUTPUT);
   pinMode(LED_PIN, OUTPUT);
@@ -98,78 +429,58 @@ void setup() {
   miServo.write(0);
 
   digitalWrite(BUZZER_A0, LOW);
-  noTone(BUZZER_A3);
+  digitalWrite(BUZZER_A3, LOW);
   digitalWrite(LED_PIN, LOW);
   digitalWrite(LED2_PIN, LOW);
   digitalWrite(LED3_PIN, LOW);
 
-  // PRUEBA INICIAL BUZZER PIN 3
-  Serial.println("=== PRUEBA: Buzzer pin 3 (2 segundos) ===");
+  Serial.println("Conectando a WiFi...");
+  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+  
+  int intentos = 0;
+  while (WiFi.status() != WL_CONNECTED && intentos < 20) {
+    Serial.print(".");
+    delay(500);
+    intentos++;
+  }
+  
+  if (WiFi.status() == WL_CONNECTED) {
+    Serial.println("\nWiFi conectado.");
+    Serial.print("IP: ");
+    Serial.println(WiFi.localIP());
+    Serial.print("Senal WiFi (RSSI): ");
+    Serial.print(WiFi.RSSI());
+    Serial.println(" dBm");
+    Serial.println();
+    sincronizarTiempo();
+  } else {
+    Serial.println("\nError al conectar WiFi (continuando sin conexion)");
+  }
+
+  Serial.println("=== PRUEBA: Buzzer pin 3 deberia sonar 2 segundos ===");
   tone(BUZZER_A3, 2000);
   delay(2000);
   noTone(BUZZER_A3);
   Serial.println("=== FIN PRUEBA ===");
 
-  // Conectar a WiFi
-  Serial.println("\n🌐 Conectando a WiFi...");
-  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
-  
-  int intentos = 0;
-  while (WiFi.status() != WL_CONNECTED && intentos < 20) {
-    delay(500);
-    Serial.print(".");
-    intentos++;
-  }
-  
-  if (WiFi.status() == WL_CONNECTED) {
-    Serial.println("\n✅ WiFi conectado!");
-    Serial.print("📡 IP: ");
-    Serial.println(WiFi.localIP());
-  } else {
-    Serial.println("\n❌ Error al conectar WiFi");
-  }
-
-  // Configurar Firebase Realtime Database
-  config.api_key = API_KEY;
-  config.database_url = DATABASE_URL; // ⚠️ NUEVO
-  
-  // Autenticación anónima (sin email/password)
-  config.token_status_callback = tokenStatusCallback;
-
-  Firebase.begin(&config, &auth);
-  Firebase.reconnectWiFi(true);
-
-  Serial.println("🔥 Conectando a Firebase Realtime DB...");
-  
-  intentos = 0;
-  while (!Firebase.ready() && intentos < 30) {
-    delay(500);
-    Serial.print(".");
-    intentos++;
-  }
-
-  if (Firebase.ready()) {
-    Serial.println("\n✅ Firebase Realtime DB conectado!");
-    actualizarEstadoDispositivo("online");
-    leerConfiguracionFirebase();
-  } else {
-    Serial.println("\n❌ Error al conectar Firebase");
-  }
-
-  // Iniciar calibración
   inicioCal = millis();
-  Serial.println("\n🎯 Comenzando calibracion de sensores...");
-  Serial.println("Sensor A0 (Piso 1): 10s | Sensor A3 (Piso 2): 20s");
+  Serial.println("Comenzando calibracion de MQ-2s...");
+  Serial.println("Sensor A0: calibracion 10s | Sensor A3: calibracion 20s");
 }
-// ============================================
-// LOOP PRINCIPAL
-// ============================================
+
 void loop() {
   int valorGas = analogRead(MQ2_PIN);
   int valorGas2 = analogRead(MQ2_PIN2);
+
   unsigned long ahora = millis();
 
-  // --- CALIBRACIÓN (igual que antes) ---
+  // NUEVO: Verificar WiFi constantemente
+  verificarConexionWiFi();
+
+  // NUEVO: Enviar heartbeat cada 2 segundos
+  enviarHeartbeat();
+
+  // MODIFICADO: Calibracion CON envio de datos
   if (ahora - inicioCal < CALIBRACION_MS_2) {
     if (ahora - inicioCal < CALIBRACION_MS_1) {
       baseline = (baseline * muestrasCal + valorGas) / (muestrasCal + 1.0);
@@ -178,320 +489,162 @@ void loop() {
       if (valorGas < calib_min_1) calib_min_1 = valorGas;
       if (valorGas > calib_max_1) calib_max_1 = valorGas;
     }
-    
     baseline2 = (baseline2 * muestrasCal2 + valorGas2) / (muestrasCal2 + 1.0);
     muestrasCal2++;
     if (muestrasCal2 == 1) ema2 = valorGas2;
     if (valorGas2 < calib_min_2) calib_min_2 = valorGas2;
     if (valorGas2 > calib_max_2) calib_max_2 = valorGas2;
 
-    if ((muestrasCal % 10 == 0 && ahora - inicioCal < CALIBRACION_MS_1) || (muestrasCal2 % 20 == 0)) {
-      Serial.print("Calibrando... A0: "); Serial.print(baseline);
-      Serial.print(" | A3: "); Serial.println(baseline2);
+    if ((muestrasCal % 5 == 0 && ahora - inicioCal < CALIBRACION_MS_1) || (muestrasCal2 % 10 == 0)) {
+      Serial.print("Calibrando... A0 baseline: "); Serial.print(baseline);
+      Serial.print("  A3 baseline: "); Serial.println(baseline2);
     }
 
     miServo.write(0);
+    
+    // NUEVO: Enviar datos durante calibracion cada 2 segundos
+    static unsigned long ultimoEnvioCalib = 0;
+    if (ahora - ultimoEnvioCalib > 2000) {
+      enviarDatosCalibracion();
+      ultimoEnvioCalib = ahora;
+      Serial.println("Enviando datos de calibracion...");
+    }
+    
     delay(200);
     return;
   }
 
-  // --- POST-CALIBRACIÓN ---
   static bool postCalChecked = false;
   if (!postCalChecked) {
-    Serial.println("\n✅ Calibración completada!");
-    Serial.print("📊 A0 baseline: "); Serial.print(baseline);
-    Serial.print(" (rango: "); Serial.print(calib_min_1); 
-    Serial.print("-"); Serial.print(calib_max_1); Serial.println(")");
-    
-    Serial.print("📊 A3 baseline: "); Serial.print(baseline2);
-    Serial.print(" (rango: "); Serial.print(calib_min_2); 
-    Serial.print("-"); Serial.print(calib_max_2); Serial.println(")");
+    Serial.println("--- Calibracion completada ---");
+    Serial.print("A0 baseline: "); Serial.println(baseline);
+    Serial.print("A0 rango calib (min..max): "); Serial.print(calib_min_1); Serial.print(" .. "); Serial.println(calib_max_1);
+    Serial.print("A3 baseline: "); Serial.println(baseline2);
+    Serial.print("A3 rango calib (min..max): "); Serial.print(calib_min_2); Serial.print(" .. "); Serial.println(calib_max_2);
 
     int rango2 = calib_max_2 - calib_min_2;
     if (rango2 < 6) {
       sensor2_fault = true;
-      Serial.println("⚠️ Sensor A3 defectuoso - será ignorado");
-      enviarNotificacion("alerta", "Sensor Piso 2 (A3) defectuoso - verificar conexión");
+      Serial.println("AVISO: Sensor en A3 parece estar pegado o defectuoso.");
     } else {
-      Serial.println("✅ Ambos sensores OK");
+      Serial.println("Sensor A3 parece estable.");
     }
     postCalChecked = true;
+    delay(200);
   }
 
-  // --- EMA ---
+  // Leer configuracion de Firebase
+  leerConfiguracionFirebase();
+
+  // EMA
   ema = ALPHA * valorGas + (1 - ALPHA) * ema;
   ema2 = ALPHA * valorGas2 + (1 - ALPHA) * ema2;
 
-  // --- UMBRALES ---
+  // Histeresis
   float umbralOn = baseline + UMBRAL_DELTA;
   float umbralOff = baseline + UMBRAL_DELTA - HISTERESIS;
   float umbralOn2 = baseline2 + UMBRAL_DELTA;
   float umbralOff2 = baseline2 + UMBRAL_DELTA - HISTERESIS;
 
-  // --- CONDICIONES DE DETECCIÓN ---
+  // Condiciones de deteccion para cada sensor
   bool cond1 = (ema > umbralOn);
   bool cond2 = (!sensor2_fault) && (ema2 > umbralOn2);
 
-  // --- DETECTAR NUEVA ALARMA ---
-  bool alarmaAnterior = alarma;
-  bool alarmaPiso1Anterior = alarmaPiso1;
-  bool alarmaPiso2Anterior = alarmaPiso2;
-
-  alarmaPiso1 = cond1;
-  alarmaPiso2 = cond2;
-  alarma = alarmaPiso1 || alarmaPiso2;
-
-  // Detectar nueva alarma
-  if (alarma && !alarmaAnterior) {
-    Serial.println("\n🚨 ¡ALARMA ACTIVADA!");
-    totalAlertas++;
-    
-    if (alarmaPiso1 && !alarmaPiso1Anterior) {
-      alertasPiso1++;
-      Serial.println("📍 PISO 1 - Gas detectado");
-      enviarNotificacion("alerta", "Gas detectado en Piso 1 - Nivel: " + String((int)ema));
+  // Logica de activacion/desactivacion de alarma
+  if (!alarma) {
+    if (cond1 || cond2) {
+      if (posibleEncendidoInicio == 0) posibleEncendidoInicio = ahora;
+      else if (ahora - posibleEncendidoInicio >= CONFIRM_ON_MS) {
+        alarma = true;
+        posibleEncendidoInicio = 0;
+        Serial.println("ALARMA ACTIVADA (confirmada) - por sensor");
+      }
+    } else {
+      posibleEncendidoInicio = 0;
     }
-    
-    if (alarmaPiso2 && !alarmaPiso2Anterior) {
-      alertasPiso2++;
-      Serial.println("📍 PISO 2 - Gas detectado");
-      enviarNotificacion("alerta", "Gas detectado en Piso 2 - Nivel: " + String((int)ema2));
-    }
-    
-    actualizarEstadisticas();
-  }
-
-  // Apagar alarma
-  if (!alarma && alarmaAnterior) {
-    Serial.println("\n✅ Alarma detenida - niveles normales");
-  }
-
-  // --- CONTROL DE ACTUADORES ---
-  controlarActuadores(cond1, cond2);
-
-  // --- LEER CONFIGURACIÓN DE FIREBASE ---
-  if (ahora - lastConfigCheck > CONFIG_CHECK_INTERVAL) {
-    leerConfiguracionFirebase();
-    lastConfigCheck = ahora;
-  }
-
-  // --- ENVIAR DATOS A FIREBASE ---
-  if (ahora - lastFirebaseUpdate > FIREBASE_UPDATE_INTERVAL) {
-    enviarDatosFirebase(valorGas, valorGas2);
-    lastFirebaseUpdate = ahora;
-  }
-
-  // --- DEBUG SERIAL ---
-  static unsigned long ultimoSerial = 0;
-  if (ahora - ultimoSerial > 1000) {
-    Serial.print("A0: "); Serial.print(valorGas);
-    Serial.print(" ("); Serial.print(cond1 ? "🔴" : "🟢"); Serial.print(")");
-    Serial.print(" | A3: "); Serial.print(valorGas2);
-    Serial.print(" ("); Serial.print(cond2 ? "🔴" : "🟢"); Serial.print(")");
-    Serial.print(" | WiFi: "); Serial.println(WiFi.status() == WL_CONNECTED ? "✓" : "✗");
-    ultimoSerial = ahora;
-  }
-
-  delay(100);
-}
-// ============================================
-// FUNCIONES FIREBASE REALTIME DATABASE
-// ============================================
-
-void enviarDatosFirebase(int sensor1, int sensor2) {
-  if (!Firebase.ready()) return;
-
-  FirebaseJson json;
-  String path = "/lecturas/" + String(millis());
-  
-  json.set("valorSensor1", sensor1);
-  json.set("valorSensor2", sensor2);
-  json.set("sensor1Alerta", alarmaPiso1);
-  json.set("sensor2Alerta", alarmaPiso2);
-  json.set("dispositivo", "arduino_001");
-  json.set("timestamp", (int)millis());
-
-  if (Firebase.RTDB.setJSON(&fbdo, path.c_str(), &json)) {
-    Serial.println("📤 Datos enviados a Realtime DB");
   } else {
-    Serial.print("❌ Error Firebase: ");
-    Serial.println(fbdo.errorReason());
-  }
-}
-
-void leerConfiguracionFirebase() {
-  if (!Firebase.ready()) return;
-
-  // Leer umbral de gas
-  if (Firebase.RTDB.getInt(&fbdo, "/configuracion/sistema/umbralGas")) {
-    if (fbdo.dataType() == "int") {
-      int nuevoUmbral = fbdo.intData();
-      if (nuevoUmbral != UMBRAL_DELTA) {
-        UMBRAL_DELTA = nuevoUmbral;
-        Serial.print("⚙️ Umbral actualizado: ");
-        Serial.println(UMBRAL_DELTA);
-      }
+    if (sensor2_fault) {
+      if (ema < umbralOff) alarma = false;
+    } else {
+      if (ema < umbralOff && ema2 < umbralOff2) alarma = false;
     }
   }
 
-  // Leer buzzer Piso 1
-  if (Firebase.RTDB.getBool(&fbdo, "/configuracion/sistema/buzzerPiso1Activo")) {
-    if (fbdo.dataType() == "boolean") {
-      buzzerPiso1Activo = fbdo.boolData();
-    }
-  }
-
-  // Leer buzzer Piso 2
-  if (Firebase.RTDB.getBool(&fbdo, "/configuracion/sistema/buzzerPiso2Activo")) {
-    if (fbdo.dataType() == "boolean") {
-      buzzerPiso2Activo = fbdo.boolData();
-    }
-  }
-
-  // Leer LED Piso 1
-  if (Firebase.RTDB.getBool(&fbdo, "/configuracion/sistema/ledPiso1Activo")) {
-    if (fbdo.dataType() == "boolean") {
-      ledPiso1Activo = fbdo.boolData();
-    }
-  }
-
-  // Leer LED Piso 2
-  if (Firebase.RTDB.getBool(&fbdo, "/configuracion/sistema/ledPiso2Activo")) {
-    if (fbdo.dataType() == "boolean") {
-      ledPiso2Activo = fbdo.boolData();
-    }
-  }
-
-  // 🔥 CORREGIDO: Leer estado del servo (control remoto)
-  if (Firebase.RTDB.getBool(&fbdo, "/configuracion/sistema/servoAbierto")) {
-    if (fbdo.dataType() == "boolean") {
-      bool nuevoEstadoRemoto = fbdo.boolData();
-      
-      // Solo aplicar si hubo cambio
-      if (nuevoEstadoRemoto != servoControlRemoto) {
-        servoControlRemoto = nuevoEstadoRemoto;
-        
-        // 🔥 IMPORTANTE: Solo mover servo si NO hay alerta activa
-        if (alarma) {
-          Serial.println("⚠️ Comando servo ignorado: hay alerta activa");
-        } else {
-          // Sin alerta: aplicar comando remoto
-          if (servoControlRemoto) {
-            miServo.write(90);
-            servoAbierto = true;
-            Serial.println("🚪 Puerta ABIERTA (remoto)");
-          } else {
-            miServo.write(0);
-            servoAbierto = false;
-            Serial.println("🚪 Puerta CERRADA (remoto)");
-          }
-        }
-      }
-    }
-  }
-
-  // Leer volumen del buzzer
-  if (Firebase.RTDB.getInt(&fbdo, "/configuracion/sistema/buzzerVolumen")) {
-    if (fbdo.dataType() == "int") {
-      buzzerVolumen = fbdo.intData();
-    }
-  }
-}
-
-void enviarNotificacion(String tipo, String mensaje) {
-  if (!Firebase.ready()) return;
-
-  FirebaseJson json;
-  String path = "/notificaciones/" + String(millis());
-  
-  json.set("tipo", tipo);
-  json.set("mensaje", mensaje);
-  json.set("timestamp", (int)millis());
-  json.set("leido", false);
-
-  if (tipo == "alerta") {
-    if (alarmaPiso1) json.set("piso", "Piso 1");
-    if (alarmaPiso2) json.set("piso", "Piso 2");
-    json.set("valorGas", (int)(alarmaPiso1 ? ema : ema2));
-  }
-
-  if (Firebase.RTDB.setJSON(&fbdo, path.c_str(), &json)) {
-    Serial.println("📬 Notificación enviada");
-  }
-}
-
-void actualizarEstadisticas() {
-  if (!Firebase.ready()) return;
-
-  FirebaseJson json;
-  String path = "/estadisticas/general";
-  
-  json.set("totalAlertas", totalAlertas);
-  json.set("alertasPiso1", alertasPiso1);
-  json.set("alertasPiso2", alertasPiso2);
-  json.set("ultimaActualizacion", (int)millis());
-
-  if (Firebase.RTDB.updateNode(&fbdo, path.c_str(), &json)) {
-    Serial.println("📊 Estadísticas actualizadas");
-  }
-}
-
-void actualizarEstadoDispositivo(String estado) {
-  if (!Firebase.ready()) return;
-
-  FirebaseJson json;
-  String path = "/dispositivos/arduino_001";
-  
-  json.set("estado", estado);
-  json.set("ultimaConexion", (int)millis());
-
-  Firebase.RTDB.updateNode(&fbdo, path.c_str(), &json);
-}
-
-void controlarActuadores(bool cond1, bool cond2) {
-  // Control de buzzer Piso 1 (Pin 5 - digitalWrite)
-  if (cond1 && buzzerPiso1Activo) {
+  // Control de buzzers respetando configuracion
+  if (cond1 && BUZZER_PISO1_ACTIVO) {
     digitalWrite(BUZZER_A0, HIGH);
   } else {
     digitalWrite(BUZZER_A0, LOW);
   }
 
-  // Control de buzzer Piso 2 (Pin 3 - tone)
-  if (cond2 && buzzerPiso2Activo) {
+  if (cond2 && BUZZER_PISO2_ACTIVO) {
     tone(BUZZER_A3, 2000);
   } else {
     noTone(BUZZER_A3);
   }
 
-  // Control de LEDs
+  // Control de LEDs respetando configuracion
   digitalWrite(LED_PIN, alarma ? HIGH : LOW);
-  digitalWrite(LED2_PIN, (cond1 && ledPiso1Activo) ? HIGH : LOW);
-  digitalWrite(LED3_PIN, (cond2 && ledPiso2Activo) ? HIGH : LOW);
+  digitalWrite(LED2_PIN, (cond1 && LED_PISO1_ACTIVO) ? HIGH : LOW);
+  digitalWrite(LED3_PIN, (cond2 && LED_PISO2_ACTIVO) ? HIGH : LOW);
 
-  // 🔥 SERVO CORREGIDO: Seguridad primero
-  if (cond1 || cond2) {
-    // HAY ALERTA: Abrir SIEMPRE (ignora todo lo demás)
-    if (!servoAbierto) {
-      miServo.write(90);
-      servoAbierto = true;
-      Serial.println("🚪 Puerta ABIERTA por detección de gas");
-    }
-  } else {
-    // SIN ALERTA: Respetar control remoto
-    if (servoControlRemoto) {
-      // Usuario quiere abrirla manualmente
-      if (!servoAbierto) {
-        miServo.write(90);
-        servoAbierto = true;
-        Serial.println("🚪 Puerta ABIERTA (control remoto)");
-      }
-    } else {
-      // Usuario quiere cerrarla
-      if (servoAbierto) {
-        miServo.write(0);
-        servoAbierto = false;
-        Serial.println("🚪 Puerta CERRADA");
-      }
+  // Control de servo - PERMANECE ABIERTO
+  if (SERVO_DEBE_ABRIR && !servoAbierto) {
+    miServo.write(90);
+    servoAbierto = true;
+    servoAbiertoManualmente = true;
+    Serial.println("Puerta ABIERTA (comando remoto)");
+  } else if (!SERVO_DEBE_ABRIR && servoAbiertoManualmente) {
+    miServo.write(0);
+    servoAbierto = false;
+    servoAbiertoManualmente = false;
+    Serial.println("Puerta CERRADA (comando remoto)");
+  }
+  
+  if ((cond1 || cond2) && !servoAbierto) {
+    miServo.write(90);
+    servoAbierto = true;
+    servoAbiertoManualmente = false;
+    Serial.println("Puerta ABIERTA (automatico por sensor - PERMANECE ABIERTO)");
+    
+    if (WiFi.status() == WL_CONNECTED) {
+      client.beginRequest();
+      client.patch("/configuracion/sistema.json");
+      client.sendHeader("Content-Type", "application/json");
+      String updateJson = "{\"servoAbierto\":true}";
+      client.sendHeader("Content-Length", updateJson.length());
+      client.beginBody();
+      client.print(updateJson);
+      client.endRequest();
+      client.responseStatusCode();
+      client.responseBody();
     }
   }
+
+  // Enviar estado completo a Firebase
+  enviarDatosFirebase();
+
+  // MODIFICADO: Mensajes de diagnostico cada 1 segundo
+  static unsigned long ultimoSerial = 0;
+  if (ahora - ultimoSerial > 1000) {
+    Serial.print("A0 raw: "); Serial.print(valorGas);
+    Serial.print("  ema1: "); Serial.print(ema,1);
+    Serial.print("  baseline1: "); Serial.print(baseline);
+    Serial.print("  umbralOn1: "); Serial.print(umbralOn);
+    Serial.print("  umbralOff1: "); Serial.print(umbralOff);
+
+    Serial.print("  ||  A3 raw: "); Serial.print(valorGas2);
+    Serial.print("  ema2: "); Serial.print(ema2,1);
+    Serial.print("  baseline2: "); Serial.print(baseline2);
+    Serial.print("  umbralOn2: "); Serial.print(umbralOn2);
+    Serial.print("  umbralOff2: "); Serial.print(umbralOff2);
+
+    Serial.print("  ||  alarma: "); Serial.print(alarma ? "ON" : "OFF");
+    Serial.print("  ||  servoAbierto: "); Serial.print(servoAbierto ? "SI" : "NO");
+    Serial.print("  ||  WiFi: "); Serial.print(WiFi.RSSI()); Serial.print(" dBm");
+    Serial.print("  ||  sensor2_fault: "); Serial.println(sensor2_fault ? "YES" : "NO");
+    ultimoSerial = ahora;
+  }
+
+  delay(INTERVALO_LECTURA);
 }

@@ -15,17 +15,172 @@ import {
   PlayCircle,
   TrendingUp,
   Clock,
-  BarChart3
+  BarChart3,
+  Wifi,
+  WifiOff,
+  RefreshCw
 } from 'lucide-react';
 import Edificio3D from './Edificio3D';
 import SimulacionPanel from './SimulacionPanel';
 import './App.css';
 
+// 🔥 HOOK MEJORADO: Sistema de Conexión Inteligente con Reconexión Automática
+// REEMPLAZA tu hook useArduinoConnectionPro() en App.jsx con esta versión:
+
+function useArduinoConnectionPro(configuracion) {
+  const [estadoConexion, setEstadoConexion] = useState({
+    conectado: false,
+    calidad: 'desconocida',
+    latencia: 0,
+    tiempoSinDatos: 0,
+    ultimosDatos: [],
+    intentosReconexion: 0,
+    ultimaActualizacion: null,
+    lecturaActual: null // ← NUEVO: lectura simulada o real
+  });
+
+  const [ultimaKey, setUltimaKey] = useState(null);
+
+  // 🔥 Escuchar lecturas - SOLO DEL ARDUINO REAL
+  useEffect(() => {
+    const lecturasRef = ref(db, 'lecturas');
+    
+    console.log('🔌 Conectando a Firebase...');
+    
+    const unsubscribe = onValue(lecturasRef, (snapshot) => {
+      const data = snapshot.val() || {};
+      const keys = Object.keys(data).sort((a, b) => b - a);
+
+      let lecturaArduino = null;
+      let keyArduino = null;
+
+      // 🔹 MODO SIMULACIÓN
+      if (configuracion?.modoSimulacion) {
+        lecturaArduino = {
+          dispositivo: "simulacion_web",
+          valorSensor1: Math.floor(Math.random() * 100),
+          valorSensor2: Math.floor(Math.random() * 100),
+          sensor1Alerta: Math.random() < 0.3,
+          sensor2Alerta: Math.random() < 0.3,
+          timestamp: Date.now()
+        };
+        keyArduino = "simulado_" + Date.now();
+        console.log('🎮 Lectura SIMULADA:', lecturaArduino);
+      } else {
+        // 🔹 LECTURA REAL
+        for (let i = 0; i < keys.length; i++) {
+          const key = keys[i];
+          const lectura = data[key];
+          
+          if (lectura.modoSimulacion === true || lectura.dispositivo === "simulacion_web") {
+            console.log(`⏭️ Ignorando lectura ${key} (es simulación)`);
+            continue;
+          }
+          
+          if (lectura.dispositivo === "arduino_001" || !lectura.dispositivo) {
+            lecturaArduino = lectura;
+            keyArduino = key;
+            console.log(`✅ Lectura REAL encontrada:`, key);
+            break;
+          }
+        }
+
+        if (!lecturaArduino) {
+          console.warn('⚠️ No hay lecturas del Arduino real, solo simulación');
+          return;
+        }
+      }
+
+      const ahora = Date.now();
+      setUltimaKey(keyArduino);
+
+      setEstadoConexion(prev => {
+        const nuevosTimestamps = [ahora, ...prev.ultimosDatos.slice(0, 9)];
+        const intervalos = nuevosTimestamps.slice(0, 5).map((t, i) => 
+          i < nuevosTimestamps.length - 1 ? t - nuevosTimestamps[i + 1] : 0
+        ).filter(i => i > 0);
+        const promedioIntervalo = intervalos.length > 0 
+          ? intervalos.reduce((a, b) => a + b, 0) / intervalos.length 
+          : 1000;
+        
+        let calidad = 'excelente';
+        if (promedioIntervalo > 2000) calidad = 'buena';
+        if (promedioIntervalo > 5000) calidad = 'regular';
+        if (promedioIntervalo > 10000) calidad = 'mala';
+
+        return {
+          conectado: !configuracion?.modoSimulacion,
+          calidad,
+          latencia: 0,
+          tiempoSinDatos: 0,
+          ultimosDatos: nuevosTimestamps,
+          intentosReconexion: 0,
+          ultimaActualizacion: ahora,
+          lecturaActual: lecturaArduino // ← lectura simulada o real
+        };
+      });
+    }, (error) => {
+      console.error('❌ Error Firebase:', error);
+      setEstadoConexion(prev => ({ ...prev, conectado: false, calidad: 'mala' }));
+    });
+
+    return () => unsubscribe();
+  }, [configuracion?.modoSimulacion]);
+
+  // Watchdog
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setEstadoConexion(prev => {
+        if (!prev.ultimaActualizacion) return prev;
+        
+        const ahora = Date.now();
+        const tiempoSinDatos = Math.floor((ahora - prev.ultimaActualizacion) / 1000);
+        const umbralDinamico = 15000;
+        const deberiaEstarConectado = (ahora - prev.ultimaActualizacion) < umbralDinamico;
+
+        if (deberiaEstarConectado !== prev.conectado) {
+          if (!deberiaEstarConectado) {
+            console.log(`⚠️ DESCONECTADO: ${tiempoSinDatos}s sin datos (umbral: 15s)`);
+          } else {
+            console.log('✅ RECONECTADO');
+          }
+        }
+
+        return { ...prev, conectado: deberiaEstarConectado, tiempoSinDatos };
+      });
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, []);
+
+  return estadoConexion;
+}
+
+
+
+
+
+
+
 function App() {
   // ==================== ESTADOS PRINCIPALES ====================
   const [notificacionActiva, setNotificacionActiva] = useState(null);
   const [mostrarPanelSimulacion, setMostrarPanelSimulacion] = useState(false);
+  const [mostrarDebug, setMostrarDebug] = useState(false);
+   // 🔹 Activar modo simulación aquí
+  const arduino = useArduinoConnectionPro({ modoSimulacion: true });
 
+  const [sensor1, setSensor1] = useState(0);
+  const [sensor2, setSensor2] = useState(0);
+  const [alerta1, setAlerta1] = useState(false);
+  const [alerta2, setAlerta2] = useState(false);
+
+
+
+  
+  // 🔥 NUEVO: Sistema de conexión mejorado
+  const conexion = useArduinoConnectionPro();
+  
   const mostrarNotificacion = (mensaje, tipo = 'success') => {
     setNotificacionActiva({ mensaje, tipo });
     setTimeout(() => setNotificacionActiva(null), 3000);
@@ -89,7 +244,6 @@ function App() {
         setConfiguracion(data);
         setConfigTemp(data);
       } else {
-        // Crear configuración por defecto
         const defaultConfig = {
           umbralGas: 60,
           intervaloLectura: 100,
@@ -116,7 +270,6 @@ function App() {
         setConfigGlobal(data);
         setConfigGlobalTemp(data);
       } else {
-        // Crear configuración global por defecto
         const defaultGlobal = {
           modoProgramado: false,
           horarioInicioSensible: "08:00",
@@ -130,49 +283,59 @@ function App() {
     return () => unsubscribe();
   }, []);
 
-  // Escuchar lecturas (últimas 50)
-  // Escuchar lecturas (últimas 50)
+   // Escuchar lecturas (últimas 50)
   useEffect(() => {
     const lecturasRef = ref(db, 'lecturas');
     const unsubscribe = onValue(lecturasRef, (snapshot) => {
       if (snapshot.exists()) {
         const data = snapshot.val();
-        const lecturasArray = Object.keys(data).map(key => ({
-          id: key,
-          ...data[key],
-          timestamp: new Date(data[key].timestamp || parseInt(key)) // 🔥 CORREGIDO
-        })).sort((a, b) => a.timestamp - b.timestamp).slice(-50);
+        
+        // 🔥 FILTRAR lecturas de simulación
+        const lecturasArray = Object.keys(data)
+          .filter(key => {
+            const lectura = data[key];
+            // Rechazar si es simulación
+            if (lectura.modoSimulacion === true || lectura.dispositivo === "simulacion_web") {
+              return false;
+            }
+            return true;
+          })
+          .map(key => ({
+            id: key,
+            ...data[key],
+            timestamp: new Date(data[key].timestamp || parseInt(key))
+          }))
+          .sort((a, b) => a.timestamp - b.timestamp)
+          .slice(-50);
 
         setLecturas(lecturasArray);
 
         if (lecturasArray.length > 0) {
           const ultima = lecturasArray[lecturasArray.length - 1];
           setUltimaLectura(ultima);
-
-          // 🔥 NUEVO: Logs para debugging
-          console.log('📊 Última lectura recibida:', {
-            sensor1: ultima.valorSensor1,
-            sensor2: ultima.valorSensor2,
-            alerta1: ultima.sensor1Alerta,
-            alerta2: ultima.sensor2Alerta
-          });
-
           setPiso1Alerta(ultima.sensor1Alerta || false);
           setPiso2Alerta(ultima.sensor2Alerta || false);
+          
+          console.log('📊 Última lectura del Arduino:', {
+            sensor1: ultima.valorSensor1,
+            sensor2: ultima.valorSensor2,
+            timestamp: ultima.timestamp
+          });
         }
       }
     });
     return () => unsubscribe();
   }, []);
 
-  // Escuchar estado del dispositivo
+
+
+   // Escuchar estado del dispositivo
   useEffect(() => {
     const dispositivoRef = ref(db, 'dispositivos/arduino_001');
     const unsubscribe = onValue(dispositivoRef, (snapshot) => {
       if (snapshot.exists()) {
         setDispositivo(snapshot.val());
       } else {
-        // Crear dispositivo por defecto
         set(dispositivoRef, {
           estado: 'offline',
           ultimaConexion: Date.now()
@@ -182,7 +345,10 @@ function App() {
     return () => unsubscribe();
   }, []);
 
-  // Escuchar notificaciones (últimas 10)
+
+
+
+// Escuchar notificaciones (últimas 10)
   useEffect(() => {
     const notificacionesRef = ref(db, 'notificaciones');
     const unsubscribe = onValue(notificacionesRef, (snapshot) => {
@@ -192,13 +358,15 @@ function App() {
           id: key,
           ...data[key],
           timestamp: new Date(data[key].timestamp)
-        })).sort((a, b) => b.timestamp - a.timestamp).slice(0, 10); // Últimas 10
+        })).sort((a, b) => b.timestamp - a.timestamp).slice(0, 10);
 
         setNotificaciones(notifsArray);
       }
     });
     return () => unsubscribe();
   }, []);
+
+
 
   // Escuchar estadísticas
   useEffect(() => {
@@ -207,7 +375,6 @@ function App() {
       if (snapshot.exists()) {
         setEstadisticas(snapshot.val());
       } else {
-        // Crear estadísticas por defecto
         set(estadisticasRef, {
           totalAlertas: 0,
           tiempoTotalAlerta: 0,
@@ -219,9 +386,13 @@ function App() {
     return () => unsubscribe();
   }, []);
 
-  // ==================== FUNCIONES ====================
 
-  // Guardar configuración del sistema
+
+
+
+
+  // ==================== FUNCIONES ====================
+ // Guardar configuración del sistema
   const guardarConfiguracion = async () => {
     try {
       const configRef = ref(db, 'configuracion/sistema');
@@ -264,7 +435,6 @@ function App() {
       mostrarNotificacion('Error al controlar puerta', 'error');
     }
   };
-
   const toggleSimulacion = async () => {
     try {
       const nuevoEstado = !configuracion.modoSimulacion;
@@ -296,9 +466,219 @@ function App() {
     ? ((estadisticas.tiempoTotalAlerta / (estadisticas.totalAlertas * 60)) * 100).toFixed(1)
     : 0;
 
+  // 🔥 COMPONENTE: Indicador de conexión avanzado
+  const IndicadorConexionAvanzado = () => {
+    const colores = {
+      excelente: '#10b981',
+      buena: '#3b82f6',
+      regular: '#f59e0b',
+      mala: '#ef4444',
+      desconocida: '#6b7280'
+    };
+
+    const iconos = {
+      excelente: '📶',
+      buena: '📶',
+      regular: '📡',
+      mala: '⚠️',
+      desconocida: '❓'
+    };
+
+    return (
+      <div style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: '12px',
+        padding: '8px 16px',
+        background: conexion.conectado ? 'rgba(16, 185, 129, 0.1)' : 'rgba(239, 68, 68, 0.1)',
+        border: `2px solid ${conexion.conectado ? '#10b981' : '#ef4444'}`,
+        borderRadius: '12px',
+        position: 'relative'
+      }}>
+        {conexion.reconectando && (
+          <RefreshCw size={16} style={{ animation: 'spin 1s linear infinite' }} />
+        )}
+        
+        {conexion.conectado ? <Wifi size={18} /> : <WifiOff size={18} />}
+        
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <strong>{conexion.conectado ? 'Conectado' : 'Desconectado'}</strong>
+            {conexion.conectado && (
+              <span style={{
+                fontSize: '11px',
+                padding: '2px 6px',
+                background: colores[conexion.calidad],
+                borderRadius: '4px',
+                color: 'white'
+              }}>
+                {iconos[conexion.calidad]} {conexion.calidad}
+              </span>
+            )}
+          </div>
+          <small style={{ fontSize: '11px', opacity: 0.8 }}>
+            {conexion.conectado ? (
+              <>Latencia: {conexion.latencia}ms</>
+            ) : (
+              <>Sin datos: {conexion.tiempoSinDatos}s {conexion.intentosReconexion > 0 && `· Reintento ${conexion.intentosReconexion}/3`}</>
+            )}
+          </small>
+        </div>
+
+        <button
+          onClick={() => setMostrarDebug(!mostrarDebug)}
+          style={{
+            marginLeft: 'auto',
+            padding: '4px 8px',
+            background: 'rgba(255,255,255,0.1)',
+            border: '1px solid rgba(255,255,255,0.2)',
+            borderRadius: '6px',
+            cursor: 'pointer',
+            fontSize: '11px'
+          }}
+        >
+          🔍 Debug
+        </button>
+      </div>
+    );
+  };
+
+  // 🔥 PANEL DE DEBUG
+const PanelDebug = () => {
+  const [datosRaw, setDatosRaw] = useState(null);
+
+  useEffect(() => {
+    const lecturasRef = ref(db, 'lecturas');
+    const unsubscribe = onValue(lecturasRef, (snapshot) => {
+      if (snapshot.exists()) {
+        const data = snapshot.val();
+        const keys = Object.keys(data).sort((a, b) => b - a);
+        if (keys.length > 0) {
+          setDatosRaw(data[keys[0]]);
+        }
+      }
+    });
+    return () => unsubscribe();
+  }, []);
 
   return (
+    <div style={{
+      position: 'fixed',
+      top: '80px',
+      right: '20px',
+      width: '400px',
+      background: 'rgba(0, 0, 0, 0.95)',
+      border: '2px solid #a78bfa',
+      borderRadius: '12px',
+      padding: '16px',
+      zIndex: 1000,
+      maxHeight: '80vh',
+      overflow: 'auto'
+    }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '12px' }}>
+        <h3 style={{ margin: 0 }}>🔍 Panel de Debug MEJORADO</h3>
+        <button onClick={() => setMostrarDebug(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '20px' }}>×</button>
+      </div>
+
+      <div style={{ fontSize: '12px', fontFamily: 'monospace' }}>
+        <div style={{ marginBottom: '12px', paddingBottom: '12px', borderBottom: '1px solid #333' }}>
+          <strong>📡 Estado de Conexión</strong>
+          <div style={{ marginTop: '8px', display: 'grid', gap: '4px' }}>
+            <div>Conectado: <span style={{ color: conexion.conectado ? '#10b981' : '#ef4444' }}>{conexion.conectado ? '✅ SÍ' : '❌ NO'}</span></div>
+            <div>Calidad: <span style={{ color: conexion.conectado ? '#10b981' : '#ef4444' }}>{conexion.calidad}</span></div>
+            <div>Latencia: {conexion.latencia}ms</div>
+            <div>Sin datos: {conexion.tiempoSinDatos}s</div>
+            <div>Reintentos: {conexion.intentosReconexion}/3</div>
+            <div>Última actualización: {conexion.ultimaActualizacion ? new Date(conexion.ultimaActualizacion).toLocaleTimeString() : 'N/A'}</div>
+          </div>
+        </div>
+
+        <div style={{ marginBottom: '12px', paddingBottom: '12px', borderBottom: '1px solid #333' }}>
+          <strong>📊 Última Lectura (de ultimaLectura)</strong>
+          <div style={{ marginTop: '8px', display: 'grid', gap: '4px' }}>
+            {ultimaLectura ? (
+              <>
+                <div>Sensor 1: <strong style={{ color: '#4facfe' }}>{ultimaLectura.valorSensor1 || ultimaLectura.valorRawSensor1 || ultimaLectura.valorGas || 0}</strong></div>
+                <div>Sensor 2: <strong style={{ color: '#a78bfa' }}>{ultimaLectura.valorSensor2 || ultimaLectura.valorRawSensor2 || 0}</strong></div>
+                <div>Alerta P1: {ultimaLectura.sensor1Alerta ? '🔴' : '🟢'}</div>
+                <div>Alerta P2: {ultimaLectura.sensor2Alerta ? '🔴' : '🟢'}</div>
+                <div>Timestamp: {ultimaLectura.timestamp ? new Date(ultimaLectura.timestamp).toLocaleTimeString() : 'N/A'}</div>
+              </>
+            ) : (
+              <div>Sin datos</div>
+            )}
+          </div>
+        </div>
+
+        <div style={{ marginBottom: '12px', paddingBottom: '12px', borderBottom: '1px solid #333' }}>
+          <strong>🔬 Datos RAW de Firebase</strong>
+          <div style={{ marginTop: '8px', background: '#1a1a1a', padding: '8px', borderRadius: '4px', maxHeight: '200px', overflow: 'auto' }}>
+            <pre style={{ margin: 0, fontSize: '10px', whiteSpace: 'pre-wrap' }}>
+              {datosRaw ? JSON.stringify(datosRaw, null, 2) : 'Sin datos'}
+            </pre>
+          </div>
+        </div>
+
+        <div style={{ marginBottom: '12px', paddingBottom: '12px', borderBottom: '1px solid #333' }}>
+          <strong>🔢 Historial Intervalos</strong>
+          <div style={{ marginTop: '8px', display: 'grid', gap: '4px' }}>
+            {conexion.ultimosDatos.slice(0, 5).map((timestamp, i) => {
+              if (i === conexion.ultimosDatos.length - 1) return null;
+              const intervalo = timestamp - conexion.ultimosDatos[i + 1];
+              return (
+                <div key={i} style={{ color: intervalo > 5000 ? '#ef4444' : '#10b981' }}>
+                  #{i + 1}: {Math.round(intervalo)}ms
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        <div>
+          <strong>⚙️ Configuración</strong>
+          <div style={{ marginTop: '8px', display: 'grid', gap: '4px' }}>
+            <div>Umbral: {configuracion.umbralGas}</div>
+            <div>Intervalo: {configuracion.intervaloLectura}ms</div>
+            <div>Buzzer P1: {configuracion.buzzerPiso1Activo ? '✅' : '❌'}</div>
+            <div>Buzzer P2: {configuracion.buzzerPiso2Activo ? '✅' : '❌'}</div>
+            <div>Servo: {configuracion.servoAbierto ? '🔓' : '🔒'}</div>
+          </div>
+        </div>
+
+        <button 
+          onClick={() => {
+            console.clear();
+            console.log('🔄 Console limpiada - esperando próxima lectura...');
+          }}
+          style={{
+            marginTop: '12px',
+            width: '100%',
+            padding: '8px',
+            background: '#a78bfa',
+            border: 'none',
+            borderRadius: '6px',
+            color: 'white',
+            cursor: 'pointer',
+            fontWeight: 'bold'
+          }}
+        >
+          🔄 Limpiar Console
+        </button>
+      </div>
+    </div>
+  );
+};
+
+  return (
+    
     <div className="app">
+      <style>{`
+        @keyframes spin {
+          from { transform: rotate(0deg); }
+          to { transform: rotate(360deg); }
+        }
+      `}</style>
+
       {/* Header */}
       <header className="header">
         <div className="header-content">
@@ -330,17 +710,15 @@ function App() {
                 Estadísticas
               </button>
             </div>
-            {dispositivo && (
-              <span className={`status ${dispositivo.estado === 'online' ? 'online' : 'offline'}`}>
-                <Activity size={16} />
-                {dispositivo.estado === 'online' ? 'Conectado' : 'Desconectado'}
-              </span>
-            )}
+            <IndicadorConexionAvanzado />
           </div>
         </div>
       </header>
 
-      {/* MODIFICADO: Alerta de gas con información de ambos pisos */}
+      {/* Panel de Debug */}
+      {mostrarDebug && <PanelDebug />}
+
+      {/* Alerta de gas */}
       {(piso1Alerta || piso2Alerta) && (
         <div className="alerta-gas">
           <AlertTriangle size={24} />
@@ -358,7 +736,7 @@ function App() {
         {/* VISTA GENERAL */}
         {vistaActual === 'general' && (
           <>
-            {/* Edificio 3D - CON SENSORES, BUZZERS Y LEDS POR PISO */}
+            {/* Edificio 3D */}
             <div className="edificio-container">
               <h2 className="section-title">
                 <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -379,7 +757,7 @@ function App() {
               <Edificio3D
                 piso1Alerta={piso1Alerta}
                 piso2Alerta={piso2Alerta}
-                puertaAbierta={configuracion.servoAbierto || piso1Alerta || piso2Alerta}
+                puertaAbierta={configuracion.servoAbierto}
                 buzzerPiso1={configuracion.buzzerPiso1Activo && piso1Alerta}
                 buzzerPiso2={configuracion.buzzerPiso2Activo && piso2Alerta}
                 ledPiso1={configuracion.ledPiso1Activo && piso1Alerta}
@@ -480,7 +858,6 @@ function App() {
                   <span>{configuracion.servoAbierto ? 'Cerrar Puerta' : 'Abrir Puerta'}</span>
                 </button>
 
-                {/* BOTÓN MODIFICADO - PANEL DE SIMULACIÓN */}
                 <button
                   className={`control-btn ${mostrarPanelSimulacion ? 'active' : ''}`}
                   onClick={() => setMostrarPanelSimulacion(true)}
@@ -503,6 +880,7 @@ function App() {
                 </div>
               </div>
             </div>
+
             {/* Gráfico con ambos sensores */}
             <div className="grafico-container">
               <h2 className="section-title">
@@ -590,10 +968,10 @@ function App() {
             </div>
           </>
         )}
+
         {/* VISTA CONFIGURACIÓN */}
         {vistaActual === 'config' && (
           <>
-            {/* Configuración del Sistema */}
             <div className="configuracion">
               <div className="config-header">
                 <h2 className="section-title">
@@ -718,7 +1096,6 @@ function App() {
               </div>
             </div>
 
-            {/* Configuración Global */}
             <div className="configuracion">
               <div className="config-header">
                 <h2 className="section-title">
@@ -809,7 +1186,7 @@ function App() {
           </>
         )}
 
-        {/* VISTA ESTADÍSTICAS - SE MANTIENE IGUAL */}
+        {/* VISTA ESTADÍSTICAS */}
         {vistaActual === 'stats' && (
           <>
             <div className="stats-container">
@@ -864,7 +1241,6 @@ function App() {
                 </div>
               </div>
 
-              {/* Mapa de calor */}
               <div className="mapa-calor">
                 <h3>🔥 Mapa de Calor - Alertas por Hora</h3>
                 <div className="heatmap-grid">
@@ -896,7 +1272,6 @@ function App() {
               </div>
             </div>
 
-            {/* Tabla de lecturas históricas */}
             <div className="historial">
               <h2 className="section-title">
                 <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -951,14 +1326,12 @@ function App() {
         <p>SDGI © 2024 - Cristian Segovia, Simón Contreras, Camilo Herrera, Diego Vera</p>
       </footer>
 
-      {/* NOTIFICACIÓN TOAST */}
       {notificacionActiva && (
         <div className={`alert-${notificacionActiva.tipo}`}>
           {notificacionActiva.mensaje}
         </div>
       )}
 
-      {/* PANEL DE SIMULACIÓN */}
       {mostrarPanelSimulacion && (
         <SimulacionPanel
           onClose={() => setMostrarPanelSimulacion(false)}
