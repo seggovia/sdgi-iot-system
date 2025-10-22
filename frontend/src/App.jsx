@@ -25,8 +25,6 @@ import SimulacionPanel from './SimulacionPanel';
 import './App.css';
 
 // 🔥 HOOK MEJORADO: Sistema de Conexión Inteligente con Reconexión Automática
-// REEMPLAZA tu hook useArduinoConnectionPro() en App.jsx con esta versión:
-
 function useArduinoConnectionPro(configuracion) {
   const [estadoConexion, setEstadoConexion] = useState({
     conectado: false,
@@ -36,16 +34,16 @@ function useArduinoConnectionPro(configuracion) {
     ultimosDatos: [],
     intentosReconexion: 0,
     ultimaActualizacion: null,
-    lecturaActual: null // ← NUEVO: lectura simulada o real
+    lecturaActual: null // ← lectura simulada o real
   });
 
   const [ultimaKey, setUltimaKey] = useState(null);
 
-  // 🔥 Escuchar lecturas - SOLO DEL ARDUINO REAL
+  // 🔥 Escuchar lecturas - FILTRANDO SIMULACIONES
   useEffect(() => {
     const lecturasRef = ref(db, 'lecturas');
     
-    console.log('🔌 Conectando a Firebase...');
+    console.log('🔌 Conectando a Firebase para lecturas reales del Arduino...');
     
     const unsubscribe = onValue(lecturasRef, (snapshot) => {
       const data = snapshot.val() || {};
@@ -54,8 +52,33 @@ function useArduinoConnectionPro(configuracion) {
       let lecturaArduino = null;
       let keyArduino = null;
 
-      // 🔹 MODO SIMULACIÓN
-      if (configuracion?.modoSimulacion) {
+      // 🔹 MODO REAL - Filtrar lecturas de simulación
+      if (!configuracion?.modoSimulacion) {
+        for (let i = 0; i < keys.length; i++) {
+          const key = keys[i];
+          const lectura = data[key];
+          
+          // ⚡ IGNORAR lecturas de simulación
+          if (lectura.modoSimulacion === true || lectura.dispositivo === "simulacion_web") {
+            console.log(`⏭️ Ignorando lectura ${key} (es simulación)`);
+            continue;
+          }
+          
+          // ✅ ACEPTAR solo lecturas del Arduino real
+          if (lectura.dispositivo === "arduino_001" || !lectura.dispositivo) {
+            lecturaArduino = lectura;
+            keyArduino = key;
+            console.log(`✅ Lectura REAL del Arduino encontrada:`, key, lectura);
+            break;
+          }
+        }
+
+        if (!lecturaArduino) {
+          console.warn('⚠️ No hay lecturas del Arduino real disponibles');
+          return;
+        }
+      } else {
+        // Modo simulación (solo para panel de pruebas)
         lecturaArduino = {
           dispositivo: "simulacion_web",
           valorSensor1: Math.floor(Math.random() * 100),
@@ -66,29 +89,6 @@ function useArduinoConnectionPro(configuracion) {
         };
         keyArduino = "simulado_" + Date.now();
         console.log('🎮 Lectura SIMULADA:', lecturaArduino);
-      } else {
-        // 🔹 LECTURA REAL
-        for (let i = 0; i < keys.length; i++) {
-          const key = keys[i];
-          const lectura = data[key];
-          
-          if (lectura.modoSimulacion === true || lectura.dispositivo === "simulacion_web") {
-            console.log(`⏭️ Ignorando lectura ${key} (es simulación)`);
-            continue;
-          }
-          
-          if (lectura.dispositivo === "arduino_001" || !lectura.dispositivo) {
-            lecturaArduino = lectura;
-            keyArduino = key;
-            console.log(`✅ Lectura REAL encontrada:`, key);
-            break;
-          }
-        }
-
-        if (!lecturaArduino) {
-          console.warn('⚠️ No hay lecturas del Arduino real, solo simulación');
-          return;
-        }
       }
 
       const ahora = Date.now();
@@ -116,7 +116,7 @@ function useArduinoConnectionPro(configuracion) {
           ultimosDatos: nuevosTimestamps,
           intentosReconexion: 0,
           ultimaActualizacion: ahora,
-          lecturaActual: lecturaArduino // ← lectura simulada o real
+          lecturaActual: lecturaArduino // ← lectura real del Arduino
         };
       });
     }, (error) => {
@@ -156,31 +156,21 @@ function useArduinoConnectionPro(configuracion) {
   return estadoConexion;
 }
 
-
-
-
-
-
-
 function App() {
   // ==================== ESTADOS PRINCIPALES ====================
   const [notificacionActiva, setNotificacionActiva] = useState(null);
   const [mostrarPanelSimulacion, setMostrarPanelSimulacion] = useState(false);
   const [mostrarDebug, setMostrarDebug] = useState(false);
-   // 🔹 Activar modo simulación aquí
-  const arduino = useArduinoConnectionPro({ modoSimulacion: true });
-
+  
+  // 🔥 CAMBIADO: modoSimulacion a FALSE para usar datos reales del Arduino
+  const conexion = useArduinoConnectionPro({ modoSimulacion: false });
+  
+  // Estados para los sensores (se actualizarán con datos reales)
   const [sensor1, setSensor1] = useState(0);
   const [sensor2, setSensor2] = useState(0);
   const [alerta1, setAlerta1] = useState(false);
   const [alerta2, setAlerta2] = useState(false);
 
-
-
-  
-  // 🔥 NUEVO: Sistema de conexión mejorado
-  const conexion = useArduinoConnectionPro();
-  
   const mostrarNotificacion = (mensaje, tipo = 'success') => {
     setNotificacionActiva({ mensaje, tipo });
     setTimeout(() => setNotificacionActiva(null), 3000);
@@ -213,793 +203,543 @@ function App() {
   const [lecturas, setLecturas] = useState([]);
   const [dispositivo, setDispositivo] = useState(null);
 
-  // Estados separados para cada piso
-  const [piso1Alerta, setPiso1Alerta] = useState(false);
-  const [piso2Alerta, setPiso2Alerta] = useState(false);
+  // Estados UI
+  const [vistaActual, setVistaActual] = useState('dashboard');
   const [notificaciones, setNotificaciones] = useState([]);
+  const [editando, setEditando] = useState(false);
+  const [editandoGlobal, setEditandoGlobal] = useState(false);
+  const [configTemp, setConfigTemp] = useState(configuracion);
+  const [configGlobalTemp, setConfigGlobalTemp] = useState(configGlobal);
 
   // Estadísticas
   const [estadisticas, setEstadisticas] = useState({
     totalAlertas: 0,
-    tiempoTotalAlerta: 0,
+    tiempoPromedioRespuesta: 0,
+    porcentajeAlertas: 0,
     alertasPiso1: 0,
     alertasPiso2: 0
   });
 
-  // Estados de UI
-  const [editando, setEditando] = useState(false);
-  const [editandoGlobal, setEditandoGlobal] = useState(false);
-  const [configTemp, setConfigTemp] = useState({});
-  const [configGlobalTemp, setConfigGlobalTemp] = useState({});
-  const [vistaActual, setVistaActual] = useState('general');
+  // 🔥 NUEVO: Actualizar estados con datos reales del Arduino
+  useEffect(() => {
+    if (conexion.lecturaActual) {
+      const lectura = conexion.lecturaActual;
+      
+      console.log('📊 Actualizando estados con lectura real:', {
+        sensor1: lectura.valorSensor1,
+        sensor2: lectura.valorSensor2,
+        alerta1: lectura.sensor1Alerta,
+        alerta2: lectura.sensor2Alerta
+      });
 
-  // ==================== EFECTOS (Firebase Realtime Database) ====================
+      // Actualizar valores de sensores
+      setSensor1(lectura.valorSensor1 || 0);
+      setSensor2(lectura.valorSensor2 || 0);
+      
+      // Actualizar alertas
+      setAlerta1(lectura.sensor1Alerta || false);
+      setAlerta2(lectura.sensor2Alerta || false);
+      
+      // Actualizar última lectura
+      setUltimaLectura(lectura);
+    }
+  }, [conexion.lecturaActual]);
 
-  // Escuchar configuración del sistema
+  // Cargar configuración desde Firebase
   useEffect(() => {
     const configRef = ref(db, 'configuracion/sistema');
     const unsubscribe = onValue(configRef, (snapshot) => {
       if (snapshot.exists()) {
-        const data = snapshot.val();
-        setConfiguracion(data);
-        setConfigTemp(data);
-      } else {
-        const defaultConfig = {
-          umbralGas: 60,
-          intervaloLectura: 100,
-          buzzerPiso1Activo: true,
-          buzzerPiso2Activo: true,
-          buzzerVolumen: 255,
-          ledPiso1Activo: true,
-          ledPiso2Activo: true,
-          servoAbierto: false,
-          modoSimulacion: false
-        };
-        set(configRef, defaultConfig);
+        const config = snapshot.val();
+        setConfiguracion(config);
+        setConfigTemp(config);
+        console.log('⚙️ Configuración cargada:', config);
       }
     });
+
     return () => unsubscribe();
   }, []);
 
-  // Escuchar configuración global
+  // Cargar configuración global
   useEffect(() => {
     const configGlobalRef = ref(db, 'configuracion/global');
     const unsubscribe = onValue(configGlobalRef, (snapshot) => {
       if (snapshot.exists()) {
-        const data = snapshot.val();
-        setConfigGlobal(data);
-        setConfigGlobalTemp(data);
-      } else {
-        const defaultGlobal = {
-          modoProgramado: false,
-          horarioInicioSensible: "08:00",
-          horarioFinSensible: "18:00",
-          sensibilidadDia: 60,
-          sensibilidadNoche: 100
-        };
-        set(configGlobalRef, defaultGlobal);
+        const config = snapshot.val();
+        setConfigGlobal(config);
+        setConfigGlobalTemp(config);
+        console.log('🌍 Configuración global cargada:', config);
       }
     });
+
     return () => unsubscribe();
   }, []);
 
-   // Escuchar lecturas (últimas 50)
+  // Cargar lecturas
   useEffect(() => {
     const lecturasRef = ref(db, 'lecturas');
     const unsubscribe = onValue(lecturasRef, (snapshot) => {
       if (snapshot.exists()) {
         const data = snapshot.val();
-        
-        // 🔥 FILTRAR lecturas de simulación
-        const lecturasArray = Object.keys(data)
-          .filter(key => {
-            const lectura = data[key];
-            // Rechazar si es simulación
-            if (lectura.modoSimulacion === true || lectura.dispositivo === "simulacion_web") {
-              return false;
-            }
-            return true;
+        const lecturasArray = Object.entries(data)
+          .filter(([key, val]) => {
+            // 🔥 FILTRAR solo lecturas del Arduino real
+            return val.dispositivo === "arduino_001" || 
+                   (!val.dispositivo && !val.modoSimulacion);
           })
-          .map(key => ({
+          .map(([key, val]) => ({
             id: key,
-            ...data[key],
-            timestamp: new Date(data[key].timestamp || parseInt(key))
+            ...val,
+            timestamp: new Date(parseInt(key))
           }))
-          .sort((a, b) => a.timestamp - b.timestamp)
-          .slice(-50);
+          .sort((a, b) => b.timestamp - a.timestamp)
+          .slice(0, 50);
 
         setLecturas(lecturasArray);
-
+        
         if (lecturasArray.length > 0) {
-          const ultima = lecturasArray[lecturasArray.length - 1];
-          setUltimaLectura(ultima);
-          setPiso1Alerta(ultima.sensor1Alerta || false);
-          setPiso2Alerta(ultima.sensor2Alerta || false);
-          
-          console.log('📊 Última lectura del Arduino:', {
-            sensor1: ultima.valorSensor1,
-            sensor2: ultima.valorSensor2,
-            timestamp: ultima.timestamp
-          });
+          setUltimaLectura(lecturasArray[0]);
         }
+
+        console.log(`📚 Cargadas ${lecturasArray.length} lecturas reales del Arduino`);
       }
     });
+
     return () => unsubscribe();
   }, []);
 
+  // Cargar notificaciones
+  useEffect(() => {
+    const notifRef = ref(db, 'notificaciones');
+    const unsubscribe = onValue(notifRef, (snapshot) => {
+      if (snapshot.exists()) {
+        const data = snapshot.val();
+        const notifArray = Object.entries(data)
+          .map(([key, val]) => ({
+            id: key,
+            ...val,
+            timestamp: new Date(val.timestamp)
+          }))
+          .sort((a, b) => b.timestamp - a.timestamp)
+          .slice(0, 20);
 
+        setNotificaciones(notifArray);
+      }
+    });
 
-   // Escuchar estado del dispositivo
+    return () => unsubscribe();
+  }, []);
+
+  // Calcular estadísticas
+  useEffect(() => {
+    const alertas = lecturas.filter(l => l.sensor1Alerta || l.sensor2Alerta);
+    const alertasPiso1 = lecturas.filter(l => l.sensor1Alerta).length;
+    const alertasPiso2 = lecturas.filter(l => l.sensor2Alerta).length;
+
+    setEstadisticas({
+      totalAlertas: alertas.length,
+      tiempoPromedioRespuesta: 0,
+      porcentajeAlertas: lecturas.length > 0 ? (alertas.length / lecturas.length * 100).toFixed(1) : 0,
+      alertasPiso1,
+      alertasPiso2
+    });
+  }, [lecturas]);
+
+  // Cargar información del dispositivo
   useEffect(() => {
     const dispositivoRef = ref(db, 'dispositivos/arduino_001');
     const unsubscribe = onValue(dispositivoRef, (snapshot) => {
       if (snapshot.exists()) {
         setDispositivo(snapshot.val());
-      } else {
-        set(dispositivoRef, {
-          estado: 'offline',
-          ultimaConexion: Date.now()
-        });
       }
     });
+
     return () => unsubscribe();
   }, []);
 
-
-
-
-// Escuchar notificaciones (últimas 10)
-  useEffect(() => {
-    const notificacionesRef = ref(db, 'notificaciones');
-    const unsubscribe = onValue(notificacionesRef, (snapshot) => {
-      if (snapshot.exists()) {
-        const data = snapshot.val();
-        const notifsArray = Object.keys(data).map(key => ({
-          id: key,
-          ...data[key],
-          timestamp: new Date(data[key].timestamp)
-        })).sort((a, b) => b.timestamp - a.timestamp).slice(0, 10);
-
-        setNotificaciones(notifsArray);
-      }
-    });
-    return () => unsubscribe();
-  }, []);
-
-
-
-  // Escuchar estadísticas
-  useEffect(() => {
-    const estadisticasRef = ref(db, 'estadisticas/general');
-    const unsubscribe = onValue(estadisticasRef, (snapshot) => {
-      if (snapshot.exists()) {
-        setEstadisticas(snapshot.val());
-      } else {
-        set(estadisticasRef, {
-          totalAlertas: 0,
-          tiempoTotalAlerta: 0,
-          alertasPiso1: 0,
-          alertasPiso2: 0
-        });
-      }
-    });
-    return () => unsubscribe();
-  }, []);
-
-
-
-
-
-
-  // ==================== FUNCIONES ====================
- // Guardar configuración del sistema
+  // Funciones de configuración
   const guardarConfiguracion = async () => {
     try {
       const configRef = ref(db, 'configuracion/sistema');
       await update(configRef, configTemp);
+      setConfiguracion(configTemp);
       setEditando(false);
-      mostrarNotificacion('Configuración actualizada correctamente', 'success');
+      mostrarNotificacion('✅ Configuración guardada correctamente');
     } catch (error) {
-      console.error('Error al guardar:', error);
-      mostrarNotificacion('Error al guardar la configuración', 'error');
+      console.error('Error al guardar configuración:', error);
+      mostrarNotificacion('❌ Error al guardar configuración', 'error');
     }
   };
 
-  // Guardar configuración global
-  const guardarConfigGlobal = async () => {
+  const guardarConfiguracionGlobal = async () => {
     try {
-      const configGlobalRef = ref(db, 'configuracion/global');
-      await update(configGlobalRef, configGlobalTemp);
+      const configRef = ref(db, 'configuracion/global');
+      await set(configRef, configGlobalTemp);
+      setConfigGlobal(configGlobalTemp);
       setEditandoGlobal(false);
-      mostrarNotificacion('Configuración global actualizada', 'success');
+      mostrarNotificacion('✅ Configuración global guardada');
     } catch (error) {
-      console.error('Error:', error);
-      mostrarNotificacion('Error al guardar', 'error');
+      console.error('Error al guardar configuración global:', error);
+      mostrarNotificacion('❌ Error al guardar', 'error');
     }
   };
 
-  // Controlar servo (puerta)
-  const toggleServo = async () => {
+  const cancelarEdicion = () => {
+    setConfigTemp(configuracion);
+    setEditando(false);
+  };
+
+  const cancelarEdicionGlobal = () => {
+    setConfigGlobalTemp(configGlobal);
+    setEditandoGlobal(false);
+  };
+
+  const controlarServo = async (abrir) => {
     try {
-      const nuevoEstado = !configuracion.servoAbierto;
       const configRef = ref(db, 'configuracion/sistema');
-      await update(configRef, {
-        servoAbierto: nuevoEstado
-      });
-      mostrarNotificacion(
-        nuevoEstado ? 'Puerta abierta' : 'Puerta cerrada',
-        'info'
-      );
+      await update(configRef, { servoAbierto: abrir });
+      mostrarNotificacion(`🚪 Puerta ${abrir ? 'abierta' : 'cerrada'}`);
     } catch (error) {
       console.error('Error al controlar servo:', error);
-      mostrarNotificacion('Error al controlar puerta', 'error');
-    }
-  };
-  const toggleSimulacion = async () => {
-    try {
-      const nuevoEstado = !configuracion.modoSimulacion;
-      const configRef = ref(db, 'configuracion/sistema');
-      await update(configRef, {
-        modoSimulacion: nuevoEstado
-      });
-      mostrarNotificacion(
-        nuevoEstado ? 'Modo simulación activado' : 'Modo simulación desactivado',
-        'info'
-      );
-    } catch (error) {
-      console.error('Error:', error);
-      mostrarNotificacion('Error al cambiar modo', 'error');
+      mostrarNotificacion('❌ Error al controlar puerta', 'error');
     }
   };
 
-  // Datos para el gráfico
-  const datosGrafico = lecturas.slice(-30).map((lectura, index) => ({
-    nombre: `#${index + 1}`,
-    sensor1: lectura.valorSensor1 || 0,
-    sensor2: lectura.valorSensor2 || 0,
-    umbral: configuracion.umbralGas,
-    tiempo: lectura.timestamp.toLocaleTimeString()
+  const marcarNotificacionLeida = async (notifId) => {
+    try {
+      const notifRef = ref(db, `notificaciones/${notifId}`);
+      await update(notifRef, { leido: true });
+    } catch (error) {
+      console.error('Error al marcar notificación:', error);
+    }
+  };
+
+  // Preparar datos para el gráfico
+  const datosGrafico = lecturas.slice(0, 20).reverse().map(l => ({
+    tiempo: l.timestamp.toLocaleTimeString(),
+    sensor1: l.valorSensor1 || l.valorGas || 0,
+    sensor2: l.valorSensor2 || 0
   }));
 
-  // Calcular porcentaje de tiempo en alerta
-  const porcentajeAlerta = estadisticas.totalAlertas > 0
-    ? ((estadisticas.tiempoTotalAlerta / (estadisticas.totalAlertas * 60)) * 100).toFixed(1)
-    : 0;
-
-  // 🔥 COMPONENTE: Indicador de conexión avanzado
-  const IndicadorConexionAvanzado = () => {
-    const colores = {
-      excelente: '#10b981',
-      buena: '#3b82f6',
-      regular: '#f59e0b',
-      mala: '#ef4444',
-      desconocida: '#6b7280'
-    };
-
-    const iconos = {
-      excelente: '📶',
-      buena: '📶',
-      regular: '📡',
-      mala: '⚠️',
-      desconocida: '❓'
-    };
-
-    return (
-      <div style={{
-        display: 'flex',
-        alignItems: 'center',
-        gap: '12px',
-        padding: '8px 16px',
-        background: conexion.conectado ? 'rgba(16, 185, 129, 0.1)' : 'rgba(239, 68, 68, 0.1)',
-        border: `2px solid ${conexion.conectado ? '#10b981' : '#ef4444'}`,
-        borderRadius: '12px',
-        position: 'relative'
-      }}>
-        {conexion.reconectando && (
-          <RefreshCw size={16} style={{ animation: 'spin 1s linear infinite' }} />
-        )}
-        
-        {conexion.conectado ? <Wifi size={18} /> : <WifiOff size={18} />}
-        
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <strong>{conexion.conectado ? 'Conectado' : 'Desconectado'}</strong>
-            {conexion.conectado && (
-              <span style={{
-                fontSize: '11px',
-                padding: '2px 6px',
-                background: colores[conexion.calidad],
-                borderRadius: '4px',
-                color: 'white'
-              }}>
-                {iconos[conexion.calidad]} {conexion.calidad}
-              </span>
-            )}
-          </div>
-          <small style={{ fontSize: '11px', opacity: 0.8 }}>
-            {conexion.conectado ? (
-              <>Latencia: {conexion.latencia}ms</>
-            ) : (
-              <>Sin datos: {conexion.tiempoSinDatos}s {conexion.intentosReconexion > 0 && `· Reintento ${conexion.intentosReconexion}/3`}</>
-            )}
-          </small>
-        </div>
-
-        <button
-          onClick={() => setMostrarDebug(!mostrarDebug)}
-          style={{
-            marginLeft: 'auto',
-            padding: '4px 8px',
-            background: 'rgba(255,255,255,0.1)',
-            border: '1px solid rgba(255,255,255,0.2)',
-            borderRadius: '6px',
-            cursor: 'pointer',
-            fontSize: '11px'
-          }}
-        >
-          🔍 Debug
-        </button>
-      </div>
-    );
-  };
-
-  // 🔥 PANEL DE DEBUG
-const PanelDebug = () => {
-  const [datosRaw, setDatosRaw] = useState(null);
-
-  useEffect(() => {
-    const lecturasRef = ref(db, 'lecturas');
-    const unsubscribe = onValue(lecturasRef, (snapshot) => {
-      if (snapshot.exists()) {
-        const data = snapshot.val();
-        const keys = Object.keys(data).sort((a, b) => b - a);
-        if (keys.length > 0) {
-          setDatosRaw(data[keys[0]]);
-        }
-      }
-    });
-    return () => unsubscribe();
-  }, []);
-
   return (
-    <div style={{
-      position: 'fixed',
-      top: '80px',
-      right: '20px',
-      width: '400px',
-      background: 'rgba(0, 0, 0, 0.95)',
-      border: '2px solid #a78bfa',
-      borderRadius: '12px',
-      padding: '16px',
-      zIndex: 1000,
-      maxHeight: '80vh',
-      overflow: 'auto'
-    }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '12px' }}>
-        <h3 style={{ margin: 0 }}>🔍 Panel de Debug MEJORADO</h3>
-        <button onClick={() => setMostrarDebug(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '20px' }}>×</button>
-      </div>
-
-      <div style={{ fontSize: '12px', fontFamily: 'monospace' }}>
-        <div style={{ marginBottom: '12px', paddingBottom: '12px', borderBottom: '1px solid #333' }}>
-          <strong>📡 Estado de Conexión</strong>
-          <div style={{ marginTop: '8px', display: 'grid', gap: '4px' }}>
-            <div>Conectado: <span style={{ color: conexion.conectado ? '#10b981' : '#ef4444' }}>{conexion.conectado ? '✅ SÍ' : '❌ NO'}</span></div>
-            <div>Calidad: <span style={{ color: conexion.conectado ? '#10b981' : '#ef4444' }}>{conexion.calidad}</span></div>
-            <div>Latencia: {conexion.latencia}ms</div>
-            <div>Sin datos: {conexion.tiempoSinDatos}s</div>
-            <div>Reintentos: {conexion.intentosReconexion}/3</div>
-            <div>Última actualización: {conexion.ultimaActualizacion ? new Date(conexion.ultimaActualizacion).toLocaleTimeString() : 'N/A'}</div>
-          </div>
-        </div>
-
-        <div style={{ marginBottom: '12px', paddingBottom: '12px', borderBottom: '1px solid #333' }}>
-          <strong>📊 Última Lectura (de ultimaLectura)</strong>
-          <div style={{ marginTop: '8px', display: 'grid', gap: '4px' }}>
-            {ultimaLectura ? (
-              <>
-                <div>Sensor 1: <strong style={{ color: '#4facfe' }}>{ultimaLectura.valorSensor1 || ultimaLectura.valorRawSensor1 || ultimaLectura.valorGas || 0}</strong></div>
-                <div>Sensor 2: <strong style={{ color: '#a78bfa' }}>{ultimaLectura.valorSensor2 || ultimaLectura.valorRawSensor2 || 0}</strong></div>
-                <div>Alerta P1: {ultimaLectura.sensor1Alerta ? '🔴' : '🟢'}</div>
-                <div>Alerta P2: {ultimaLectura.sensor2Alerta ? '🔴' : '🟢'}</div>
-                <div>Timestamp: {ultimaLectura.timestamp ? new Date(ultimaLectura.timestamp).toLocaleTimeString() : 'N/A'}</div>
-              </>
-            ) : (
-              <div>Sin datos</div>
-            )}
-          </div>
-        </div>
-
-        <div style={{ marginBottom: '12px', paddingBottom: '12px', borderBottom: '1px solid #333' }}>
-          <strong>🔬 Datos RAW de Firebase</strong>
-          <div style={{ marginTop: '8px', background: '#1a1a1a', padding: '8px', borderRadius: '4px', maxHeight: '200px', overflow: 'auto' }}>
-            <pre style={{ margin: 0, fontSize: '10px', whiteSpace: 'pre-wrap' }}>
-              {datosRaw ? JSON.stringify(datosRaw, null, 2) : 'Sin datos'}
-            </pre>
-          </div>
-        </div>
-
-        <div style={{ marginBottom: '12px', paddingBottom: '12px', borderBottom: '1px solid #333' }}>
-          <strong>🔢 Historial Intervalos</strong>
-          <div style={{ marginTop: '8px', display: 'grid', gap: '4px' }}>
-            {conexion.ultimosDatos.slice(0, 5).map((timestamp, i) => {
-              if (i === conexion.ultimosDatos.length - 1) return null;
-              const intervalo = timestamp - conexion.ultimosDatos[i + 1];
-              return (
-                <div key={i} style={{ color: intervalo > 5000 ? '#ef4444' : '#10b981' }}>
-                  #{i + 1}: {Math.round(intervalo)}ms
-                </div>
-              );
-            })}
-          </div>
-        </div>
-
-        <div>
-          <strong>⚙️ Configuración</strong>
-          <div style={{ marginTop: '8px', display: 'grid', gap: '4px' }}>
-            <div>Umbral: {configuracion.umbralGas}</div>
-            <div>Intervalo: {configuracion.intervaloLectura}ms</div>
-            <div>Buzzer P1: {configuracion.buzzerPiso1Activo ? '✅' : '❌'}</div>
-            <div>Buzzer P2: {configuracion.buzzerPiso2Activo ? '✅' : '❌'}</div>
-            <div>Servo: {configuracion.servoAbierto ? '🔓' : '🔒'}</div>
-          </div>
-        </div>
-
-        <button 
-          onClick={() => {
-            console.clear();
-            console.log('🔄 Console limpiada - esperando próxima lectura...');
-          }}
-          style={{
-            marginTop: '12px',
-            width: '100%',
-            padding: '8px',
-            background: '#a78bfa',
-            border: 'none',
-            borderRadius: '6px',
-            color: 'white',
-            cursor: 'pointer',
-            fontWeight: 'bold'
-          }}
-        >
-          🔄 Limpiar Console
-        </button>
-      </div>
-    </div>
-  );
-};
-
-  return (
-    
-    <div className="app">
-      <style>{`
-        @keyframes spin {
-          from { transform: rotate(0deg); }
-          to { transform: rotate(360deg); }
-        }
-      `}</style>
-
-      {/* Header */}
+    <div className="App">
       <header className="header">
         <div className="header-content">
-          <div className="logo">
-            <Flame size={32} />
-            <h1>SDGI - Sistema Detector de Gas IoT</h1>
+          <div className="header-left">
+            <Flame className="logo-icon" size={40} />
+            <div>
+              <h1>SDGI - Sistema Detector de Gas Inteligente</h1>
+              <p className="subtitle">Monitoreo en Tiempo Real con Arduino</p>
+            </div>
           </div>
           <div className="header-right">
-            <div className="tabs">
-              <button
-                className={`tab ${vistaActual === 'general' ? 'active' : ''}`}
-                onClick={() => setVistaActual('general')}
-              >
-                <Activity size={18} />
-                General
-              </button>
-              <button
-                className={`tab ${vistaActual === 'config' ? 'active' : ''}`}
-                onClick={() => setVistaActual('config')}
-              >
-                <Settings size={18} />
-                Configuración
-              </button>
-              <button
-                className={`tab ${vistaActual === 'stats' ? 'active' : ''}`}
-                onClick={() => setVistaActual('stats')}
-              >
-                <BarChart3 size={18} />
-                Estadísticas
-              </button>
+            {/* 🔥 Indicador de conexión real */}
+            <div className={`status-indicator ${conexion.conectado ? 'connected' : 'disconnected'}`}>
+              {conexion.conectado ? <Wifi size={20} /> : <WifiOff size={20} />}
+              <span>{conexion.conectado ? 'Arduino Conectado' : 'Arduino Desconectado'}</span>
             </div>
-            <IndicadorConexionAvanzado />
+            <button
+              className="icon-button"
+              onClick={() => setMostrarPanelSimulacion(true)}
+              title="Panel de Simulación"
+            >
+              <PlayCircle size={24} />
+            </button>
           </div>
         </div>
       </header>
 
-      {/* Panel de Debug */}
-      {mostrarDebug && <PanelDebug />}
-
-      {/* Alerta de gas */}
-      {(piso1Alerta || piso2Alerta) && (
-        <div className="alerta-gas">
-          <AlertTriangle size={24} />
-          <span>
-            ⚠️ GAS DETECTADO -
-            {piso1Alerta && ` PISO 1 (Sensor A0: ${ultimaLectura?.valorSensor1 || 0})`}
-            {piso1Alerta && piso2Alerta && ' | '}
-            {piso2Alerta && ` PISO 2 (Sensor A3: ${ultimaLectura?.valorSensor2 || 0})`}
-          </span>
-          <AlertTriangle size={24} />
-        </div>
-      )}
+      {/* Navegación */}
+      <nav className="nav-tabs">
+        <button
+          className={vistaActual === 'dashboard' ? 'active' : ''}
+          onClick={() => setVistaActual('dashboard')}
+        >
+          <Activity size={20} />
+          <span>Dashboard</span>
+        </button>
+        <button
+          className={vistaActual === 'notif' ? 'active' : ''}
+          onClick={() => setVistaActual('notif')}
+        >
+          <Bell size={20} />
+          <span>Notificaciones</span>
+          {notificaciones.filter(n => !n.leido).length > 0 && (
+            <span className="badge">{notificaciones.filter(n => !n.leido).length}</span>
+          )}
+        </button>
+        <button
+          className={vistaActual === 'config' ? 'active' : ''}
+          onClick={() => setVistaActual('config')}
+        >
+          <Settings size={20} />
+          <span>Configuración</span>
+        </button>
+        <button
+          className={vistaActual === 'stats' ? 'active' : ''}
+          onClick={() => setVistaActual('stats')}
+        >
+          <BarChart3 size={20} />
+          <span>Estadísticas</span>
+        </button>
+      </nav>
 
       <div className="container">
-        {/* VISTA GENERAL */}
-        {vistaActual === 'general' && (
+        {/* VISTA DASHBOARD */}
+        {vistaActual === 'dashboard' && (
           <>
-            {/* Edificio 3D */}
-            <div className="edificio-container">
+            {/* Información de conexión */}
+            <div className="connection-info">
+              <div className="info-card">
+                <span className="info-label">Estado Arduino:</span>
+                <span className={`info-value ${conexion.conectado ? 'success' : 'danger'}`}>
+                  {conexion.conectado ? '🟢 Conectado' : '🔴 Desconectado'}
+                </span>
+              </div>
+              <div className="info-card">
+                <span className="info-label">Calidad Conexión:</span>
+                <span className="info-value">{conexion.calidad}</span>
+              </div>
+              <div className="info-card">
+                <span className="info-label">Última Actualización:</span>
+                <span className="info-value">
+                  {conexion.ultimaActualizacion 
+                    ? new Date(conexion.ultimaActualizacion).toLocaleTimeString()
+                    : 'Nunca'}
+                </span>
+              </div>
+              <div className="info-card">
+                <span className="info-label">Tiempo sin datos:</span>
+                <span className="info-value">{conexion.tiempoSinDatos}s</span>
+              </div>
+            </div>
+
+            {/* Edificio 3D - AHORA CON DATOS REALES */}
+            <div className="dashboard-section">
               <h2 className="section-title">
-                <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <rect x="4" y="2" width="16" height="20" rx="2" ry="2"></rect>
-                  <path d="M9 22v-4h6v4"></path>
-                  <path d="M8 6h.01"></path>
-                  <path d="M16 6h.01"></path>
-                  <path d="M12 6h.01"></path>
-                  <path d="M12 10h.01"></path>
-                  <path d="M12 14h.01"></path>
-                  <path d="M16 10h.01"></path>
-                  <path d="M16 14h.01"></path>
-                  <path d="M8 10h.01"></path>
-                  <path d="M8 14h.01"></path>
-                </svg>
-                <span>Edificio en Tiempo Real</span>
+                <Flame size={24} />
+                <span>Visualización 3D del Edificio (Datos Reales)</span>
               </h2>
               <Edificio3D
-                piso1Alerta={piso1Alerta}
-                piso2Alerta={piso2Alerta}
+                piso1Alerta={alerta1}
+                piso2Alerta={alerta2}
                 puertaAbierta={configuracion.servoAbierto}
-                buzzerPiso1={configuracion.buzzerPiso1Activo && piso1Alerta}
-                buzzerPiso2={configuracion.buzzerPiso2Activo && piso2Alerta}
-                ledPiso1={configuracion.ledPiso1Activo && piso1Alerta}
-                ledPiso2={configuracion.ledPiso2Activo && piso2Alerta}
+                buzzerPiso1={alerta1 && configuracion.buzzerPiso1Activo}
+                buzzerPiso2={alerta2 && configuracion.buzzerPiso2Activo}
+                ledPiso1={alerta1 && configuracion.ledPiso1Activo}
+                ledPiso2={alerta2 && configuracion.ledPiso2Activo}
               />
             </div>
 
-            {/* CARDS CON INFORMACIÓN DETALLADA POR PISO */}
-            <div className="cards">
-              <div className={`card ${piso1Alerta ? 'alerta' : ''}`}>
-                <div className="card-header">
-                  <Activity size={20} />
+            {/* Sensores en tiempo real */}
+            <div className="sensors-grid">
+              <div className={`sensor-card ${alerta1 ? 'alert' : ''}`}>
+                <div className="sensor-header">
+                  <Flame size={24} />
                   <h3>Sensor Piso 1 (A0)</h3>
                 </div>
-                <div className="card-value">
-                  {ultimaLectura ? (ultimaLectura.valorSensor1 || ultimaLectura.valorGas || 0) : '---'}
+                <div className="sensor-value">{sensor1}</div>
+                <div className="sensor-info">
+                  <span>Umbral: {configuracion.umbralGas}</span>
+                  <span className={`status ${alerta1 ? 'danger' : 'success'}`}>
+                    {alerta1 ? '🔴 Alerta' : '🟢 Normal'}
+                  </span>
                 </div>
-                <div className="card-status-indicators">
-                  <div className={`indicator ${piso1Alerta ? 'active' : ''}`}>
-                    🔊 Buzzer {configuracion.buzzerPiso1Activo ? (piso1Alerta ? 'ON' : 'Listo') : 'OFF'}
-                  </div>
-                  <div className={`indicator ${piso1Alerta ? 'active' : ''}`}>
-                    💡 LED {configuracion.ledPiso1Activo ? (piso1Alerta ? 'ON' : 'Listo') : 'OFF'}
-                  </div>
-                </div>
-                <div className="card-label">
-                  {piso1Alerta ? '🔴 ALERTA ACTIVA' : '🟢 Normal'}
+                <div className="sensor-controls">
+                  <label>
+                    <input
+                      type="checkbox"
+                      checked={configuracion.buzzerPiso1Activo}
+                      onChange={() => {}}
+                      disabled
+                    />
+                    Buzzer (Pin 5)
+                  </label>
+                  <label>
+                    <input
+                      type="checkbox"
+                      checked={configuracion.ledPiso1Activo}
+                      onChange={() => {}}
+                      disabled
+                    />
+                    LED (Pin 1)
+                  </label>
                 </div>
               </div>
 
-              <div className={`card ${piso2Alerta ? 'alerta' : ''}`}>
-                <div className="card-header">
-                  <Activity size={20} />
+              <div className={`sensor-card ${alerta2 ? 'alert' : ''}`}>
+                <div className="sensor-header">
+                  <Flame size={24} />
                   <h3>Sensor Piso 2 (A3)</h3>
                 </div>
-                <div className="card-value">
-                  {ultimaLectura ? (ultimaLectura.valorSensor2 || 0) : '---'}
+                <div className="sensor-value">{sensor2}</div>
+                <div className="sensor-info">
+                  <span>Umbral: {configuracion.umbralGas}</span>
+                  <span className={`status ${alerta2 ? 'danger' : 'success'}`}>
+                    {alerta2 ? '🔴 Alerta' : '🟢 Normal'}
+                  </span>
                 </div>
-                <div className="card-status-indicators">
-                  <div className={`indicator ${piso2Alerta ? 'active' : ''}`}>
-                    🔊 Buzzer {configuracion.buzzerPiso2Activo ? (piso2Alerta ? 'ON' : 'Listo') : 'OFF'}
-                  </div>
-                  <div className={`indicator ${piso2Alerta ? 'active' : ''}`}>
-                    💡 LED {configuracion.ledPiso2Activo ? (piso2Alerta ? 'ON' : 'Listo') : 'OFF'}
-                  </div>
-                </div>
-                <div className="card-label">
-                  {piso2Alerta ? '🔴 ALERTA ACTIVA' : '🟢 Normal'}
-                </div>
-              </div>
-
-              <div className="card">
-                <div className="card-header">
-                  <Bell size={20} />
-                  <h3>Umbral</h3>
-                </div>
-                <div className="card-value">{configuracion.umbralGas}</div>
-                <div className="card-label">Límite de detección</div>
-                <div className="card-info-extra">
-                  <small>🎚️ Sensibilidad ajustable</small>
-                </div>
-              </div>
-
-              <div className={`card ${piso1Alerta || piso2Alerta ? 'alerta' : ''}`}>
-                <div className="card-header">
-                  <Flame size={20} />
-                  <h3>Estado General</h3>
-                </div>
-                <div className="card-value-emoji">
-                  {piso1Alerta || piso2Alerta ? '🔴' : '🟢'}
-                </div>
-                <div className="card-status-text">
-                  {piso1Alerta || piso2Alerta ? 'ALERTA' : 'NORMAL'}
-                </div>
-                <div className="card-label">
-                  {piso1Alerta || piso2Alerta ? 'Gas detectado en edificio' : 'Todo OK'}
+                <div className="sensor-controls">
+                  <label>
+                    <input
+                      type="checkbox"
+                      checked={configuracion.buzzerPiso2Activo}
+                      onChange={() => {}}
+                      disabled
+                    />
+                    Buzzer (Pin 3)
+                  </label>
+                  <label>
+                    <input
+                      type="checkbox"
+                      checked={configuracion.ledPiso2Activo}
+                      onChange={() => {}}
+                      disabled
+                    />
+                    LED (Pin 2)
+                  </label>
                 </div>
               </div>
             </div>
 
-            {/* Controles rápidos */}
-            <div className="controles-rapidos">
-              <h2 className="section-title">
-                <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <circle cx="12" cy="12" r="10"></circle>
-                  <path d="M8 14s1.5 2 4 2 4-2 4-2"></path>
-                  <line x1="9" y1="9" x2="9.01" y2="9"></line>
-                  <line x1="15" y1="9" x2="15.01" y2="9"></line>
-                </svg>
-                <span>Controles Rápidos</span>
-              </h2>
-              <div className="controles-grid">
+            {/* Control de puerta */}
+            <div className="door-control">
+              <h3>
+                <DoorOpen size={24} />
+                Control de Puerta (Servo)
+              </h3>
+              <div className="door-buttons">
                 <button
-                  className={`control-btn ${configuracion.servoAbierto ? 'active' : ''}`}
-                  onClick={toggleServo}
+                  className={`door-btn ${configuracion.servoAbierto ? 'active' : ''}`}
+                  onClick={() => controlarServo(true)}
+                  disabled={configuracion.servoAbierto}
                 >
-                  {configuracion.servoAbierto ? <DoorOpen size={24} /> : <DoorClosed size={24} />}
-                  <span>{configuracion.servoAbierto ? 'Cerrar Puerta' : 'Abrir Puerta'}</span>
+                  <DoorOpen size={20} />
+                  Abrir Puerta
                 </button>
-
                 <button
-                  className={`control-btn ${mostrarPanelSimulacion ? 'active' : ''}`}
-                  onClick={() => setMostrarPanelSimulacion(true)}
+                  className={`door-btn ${!configuracion.servoAbierto ? 'active' : ''}`}
+                  onClick={() => controlarServo(false)}
+                  disabled={!configuracion.servoAbierto}
                 >
-                  <PlayCircle size={24} />
-                  <span>Panel de Simulación</span>
+                  <DoorClosed size={20} />
+                  Cerrar Puerta
                 </button>
-
-                <div className="control-info">
-                  <Volume2 size={20} />
-                  <div>
-                    <span>Volumen Buzzer</span>
-                    <div className="volume-bar">
-                      <div
-                        className="volume-fill"
-                        style={{ width: `${(configuracion.buzzerVolumen / 255) * 100}%` }}
-                      />
-                    </div>
-                  </div>
-                </div>
               </div>
+              <p className="door-status">
+                Estado actual: <strong>{configuracion.servoAbierto ? '🚪 Abierta' : '🚪 Cerrada'}</strong>
+              </p>
             </div>
 
-            {/* Gráfico con ambos sensores */}
-            <div className="grafico-container">
+            {/* Gráfico */}
+            <div className="chart-container">
               <h2 className="section-title">
-                <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <line x1="18" y1="20" x2="18" y2="10"></line>
-                  <line x1="12" y1="20" x2="12" y2="4"></line>
-                  <line x1="6" y1="20" x2="6" y2="14"></line>
-                </svg>
-                <span>Lecturas en Tiempo Real (Últimas 30)</span>
+                <Activity size={24} />
+                <span>Lecturas en Tiempo Real (Datos Reales del Arduino)</span>
               </h2>
-              {lecturas.length > 0 ? (
-                <ResponsiveContainer width="100%" height={350}>
+              {datosGrafico.length > 0 ? (
+                <ResponsiveContainer width="100%" height={300}>
                   <LineChart data={datosGrafico}>
                     <CartesianGrid strokeDasharray="3 3" stroke="#333" />
-                    <XAxis dataKey="nombre" stroke="#ccc" />
-                    <YAxis stroke="#ccc" />
+                    <XAxis dataKey="tiempo" stroke="#888" />
+                    <YAxis stroke="#888" />
                     <Tooltip
                       contentStyle={{
-                        backgroundColor: '#1a1a1a',
-                        border: '1px solid #a78bfa',
+                        backgroundColor: '#1a1a2e',
+                        border: '1px solid #4facfe',
                         borderRadius: '8px'
                       }}
-                      labelStyle={{ color: '#fff' }}
                     />
                     <Legend />
                     <Line
                       type="monotone"
                       dataKey="sensor1"
                       stroke="#4facfe"
-                      strokeWidth={3}
+                      strokeWidth={2}
                       dot={{ fill: '#4facfe', r: 4 }}
-                      name="Sensor Piso 1 (A0)"
+                      name="Sensor Piso 1"
                     />
                     <Line
                       type="monotone"
                       dataKey="sensor2"
                       stroke="#a78bfa"
-                      strokeWidth={3}
-                      dot={{ fill: '#a78bfa', r: 4 }}
-                      name="Sensor Piso 2 (A3)"
-                    />
-                    <Line
-                      type="monotone"
-                      dataKey="umbral"
-                      stroke="#ff4444"
-                      strokeDasharray="5 5"
                       strokeWidth={2}
-                      name="Umbral"
+                      dot={{ fill: '#a78bfa', r: 4 }}
+                      name="Sensor Piso 2"
                     />
                   </LineChart>
                 </ResponsiveContainer>
               ) : (
-                <div className="sin-datos">
-                  <p>📡 Esperando datos del Arduino...</p>
-                </div>
+                <p className="sin-datos">Esperando lecturas del Arduino...</p>
               )}
             </div>
-
-            {/* Notificaciones */}
-            <div className="notificaciones">
-              <h2 className="section-title">
-                <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path>
-                  <path d="M13.73 21a2 2 0 0 1-3.46 0"></path>
-                </svg>
-                <span>Notificaciones Recientes</span>
-              </h2>
-              <div className="notif-lista">
-                {notificaciones.length > 0 ? (
-                  notificaciones.map(notif => (
-                    <div key={notif.id} className={`notif-item ${notif.tipo}`}>
-                      <div className="notif-icon">
-                        {notif.tipo === 'alerta' ? <AlertTriangle size={20} /> : <Bell size={20} />}
-                      </div>
-                      <div className="notif-content">
-                        <p>{notif.mensaje}</p>
-                        <small>{notif.timestamp.toLocaleString()}</small>
-                      </div>
-                    </div>
-                  ))
-                ) : (
-                  <p className="sin-datos">No hay notificaciones</p>
-                )}
-              </div>
-            </div>
           </>
+        )}
+
+        {/* VISTA NOTIFICACIONES */}
+        {vistaActual === 'notif' && (
+          <div className="notificaciones-container">
+            <h2 className="section-title">
+              <Bell size={24} />
+              <span>Centro de Notificaciones</span>
+            </h2>
+            {notificaciones.length > 0 ? (
+              <div className="notificaciones-lista">
+                {notificaciones.map(notif => (
+                  <div
+                    key={notif.id}
+                    className={`notificacion-item ${notif.tipo} ${notif.leido ? 'leida' : ''}`}
+                    onClick={() => marcarNotificacionLeida(notif.id)}
+                  >
+                    <div className="notif-icon">
+                      {notif.tipo === 'alerta' ? <AlertTriangle size={24} /> : <Bell size={24} />}
+                    </div>
+                    <div className="notif-content">
+                      <p className="notif-mensaje">{notif.mensaje}</p>
+                      <small className="notif-tiempo">
+                        {notif.timestamp.toLocaleString()}
+                      </small>
+                    </div>
+                    {!notif.leido && <span className="notif-badge">Nueva</span>}
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="sin-datos">No hay notificaciones</p>
+            )}
+          </div>
         )}
 
         {/* VISTA CONFIGURACIÓN */}
         {vistaActual === 'config' && (
           <>
-            <div className="configuracion">
+            <div className="config-section">
               <div className="config-header">
                 <h2 className="section-title">
                   <Settings size={24} />
                   <span>Configuración del Sistema</span>
                 </h2>
-                {!editando ? (
-                  <button className="btn-editar" onClick={() => setEditando(true)}>
-                    ✏️ Editar
-                  </button>
-                ) : (
-                  <div className="btn-group">
-                    <button className="btn-guardar" onClick={guardarConfiguracion}>
-                      💾 Guardar
+                <div className="config-buttons">
+                  {!editando ? (
+                    <button className="btn-primary" onClick={() => setEditando(true)}>
+                      Editar Configuración
                     </button>
-                    <button className="btn-cancelar" onClick={() => {
-                      setConfigTemp(configuracion);
-                      setEditando(false);
-                    }}>
-                      ❌ Cancelar
-                    </button>
-                  </div>
-                )}
+                  ) : (
+                    <>
+                      <button className="btn-success" onClick={guardarConfiguracion}>
+                        Guardar Cambios
+                      </button>
+                      <button className="btn-danger" onClick={cancelarEdicion}>
+                        Cancelar
+                      </button>
+                    </>
+                  )}
+                </div>
               </div>
 
               <div className="config-grid">
                 <div className="config-item">
-                  <label>🎚️ Umbral de Gas</label>
+                  <label>🔥 Umbral de Gas</label>
                   <input
                     type="number"
                     value={editando ? configTemp.umbralGas : configuracion.umbralGas}
@@ -1008,7 +748,7 @@ const PanelDebug = () => {
                     min="10"
                     max="200"
                   />
-                  <small>Sensibilidad de detección (10-200) | Actual: {configuracion.umbralGas}</small>
+                  <small>Valor mínimo para activar alerta (10-200)</small>
                 </div>
 
                 <div className="config-item">
@@ -1018,113 +758,93 @@ const PanelDebug = () => {
                     value={editando ? configTemp.intervaloLectura : configuracion.intervaloLectura}
                     onChange={(e) => setConfigTemp({ ...configTemp, intervaloLectura: parseInt(e.target.value) })}
                     disabled={!editando}
-                    min="100"
-                    max="5000"
-                    step="100"
+                    min="50"
+                    max="1000"
                   />
-                  <small>Tiempo entre lecturas (100-5000ms)</small>
+                  <small>Tiempo entre lecturas del sensor</small>
                 </div>
 
                 <div className="config-item">
-                  <label>🔊 Volumen Buzzer</label>
-                  <input
-                    type="range"
-                    value={editando ? configTemp.buzzerVolumen : configuracion.buzzerVolumen}
-                    onChange={(e) => setConfigTemp({ ...configTemp, buzzerVolumen: parseInt(e.target.value) })}
-                    disabled={!editando}
-                    min="0"
-                    max="255"
-                  />
-                  <small>Volumen: {editando ? configTemp.buzzerVolumen : configuracion.buzzerVolumen}/255</small>
-                </div>
-
-                <div className="config-item">
-                  <label>🔊 Buzzer Piso 1 (Pin 5)</label>
-                  <div className="toggle">
+                  <label>
                     <input
                       type="checkbox"
                       checked={editando ? configTemp.buzzerPiso1Activo : configuracion.buzzerPiso1Activo}
                       onChange={(e) => setConfigTemp({ ...configTemp, buzzerPiso1Activo: e.target.checked })}
                       disabled={!editando}
                     />
-                    <span>{(editando ? configTemp.buzzerPiso1Activo : configuracion.buzzerPiso1Activo) ? 'Activado' : 'Desactivado'}</span>
-                  </div>
-                  <small>Sensor A0 - Buzzer activo (digitalWrite)</small>
+                    Buzzer Piso 1 Activo
+                  </label>
+                  <small>Pin 5 - Alerta sonora primer piso</small>
                 </div>
 
                 <div className="config-item">
-                  <label>🔊 Buzzer Piso 2 (Pin 3)</label>
-                  <div className="toggle">
+                  <label>
                     <input
                       type="checkbox"
                       checked={editando ? configTemp.buzzerPiso2Activo : configuracion.buzzerPiso2Activo}
                       onChange={(e) => setConfigTemp({ ...configTemp, buzzerPiso2Activo: e.target.checked })}
                       disabled={!editando}
                     />
-                    <span>{(editando ? configTemp.buzzerPiso2Activo : configuracion.buzzerPiso2Activo) ? 'Activado' : 'Desactivado'}</span>
-                  </div>
-                  <small>Sensor A3 - Buzzer pasivo (tone 2000Hz)</small>
+                    Buzzer Piso 2 Activo
+                  </label>
+                  <small>Pin 3 - Alerta sonora segundo piso</small>
                 </div>
 
                 <div className="config-item">
-                  <label>💡 LED Piso 1 (Pin 1)</label>
-                  <div className="toggle">
+                  <label>
                     <input
                       type="checkbox"
                       checked={editando ? configTemp.ledPiso1Activo : configuracion.ledPiso1Activo}
                       onChange={(e) => setConfigTemp({ ...configTemp, ledPiso1Activo: e.target.checked })}
                       disabled={!editando}
                     />
-                    <span>{(editando ? configTemp.ledPiso1Activo : configuracion.ledPiso1Activo) ? 'Activado' : 'Desactivado'}</span>
-                  </div>
-                  <small>Indicador visual para Sensor A0</small>
+                    LED Piso 1 Activo
+                  </label>
+                  <small>Pin 1 - Indicador visual primer piso</small>
                 </div>
 
                 <div className="config-item">
-                  <label>💡 LED Piso 2 (Pin 2)</label>
-                  <div className="toggle">
+                  <label>
                     <input
                       type="checkbox"
                       checked={editando ? configTemp.ledPiso2Activo : configuracion.ledPiso2Activo}
                       onChange={(e) => setConfigTemp({ ...configTemp, ledPiso2Activo: e.target.checked })}
                       disabled={!editando}
                     />
-                    <span>{(editando ? configTemp.ledPiso2Activo : configuracion.ledPiso2Activo) ? 'Activado' : 'Desactivado'}</span>
-                  </div>
-                  <small>Indicador visual para Sensor A3</small>
+                    LED Piso 2 Activo
+                  </label>
+                  <small>Pin 2 - Indicador visual segundo piso</small>
                 </div>
               </div>
             </div>
 
-            <div className="configuracion">
+            <div className="config-section">
               <div className="config-header">
                 <h2 className="section-title">
                   <Clock size={24} />
-                  <span>Modo Programado</span>
+                  <span>Configuración Global</span>
                 </h2>
-                {!editandoGlobal ? (
-                  <button className="btn-editar" onClick={() => setEditandoGlobal(true)}>
-                    ✏️ Editar
-                  </button>
-                ) : (
-                  <div className="btn-group">
-                    <button className="btn-guardar" onClick={guardarConfigGlobal}>
-                      💾 Guardar
+                <div className="config-buttons">
+                  {!editandoGlobal ? (
+                    <button className="btn-primary" onClick={() => setEditandoGlobal(true)}>
+                      Editar
                     </button>
-                    <button className="btn-cancelar" onClick={() => {
-                      setConfigGlobalTemp(configGlobal);
-                      setEditandoGlobal(false);
-                    }}>
-                      ❌ Cancelar
-                    </button>
-                  </div>
-                )}
+                  ) : (
+                    <>
+                      <button className="btn-success" onClick={guardarConfiguracionGlobal}>
+                        Guardar
+                      </button>
+                      <button className="btn-danger" onClick={cancelarEdicionGlobal}>
+                        Cancelar
+                      </button>
+                    </>
+                  )}
+                </div>
               </div>
 
               <div className="config-grid">
                 <div className="config-item">
-                  <label>⏰ Modo Programado</label>
-                  <div className="toggle">
+                  <label>
                     <input
                       type="checkbox"
                       checked={editandoGlobal ? configGlobalTemp.modoProgramado : configGlobal.modoProgramado}
@@ -1132,7 +852,7 @@ const PanelDebug = () => {
                       disabled={!editandoGlobal}
                     />
                     <span>{(editandoGlobal ? configGlobalTemp.modoProgramado : configGlobal.modoProgramado) ? 'Activado' : 'Desactivado'}</span>
-                  </div>
+                  </label>
                   <small>Ajusta la sensibilidad según el horario</small>
                 </div>
 

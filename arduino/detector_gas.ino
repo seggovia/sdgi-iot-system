@@ -75,10 +75,9 @@ bool timestampSincronizado = false;
 
 // FUNCION: Obtener timestamp Unix actual
 unsigned long getTimestampUnix() {
-  // Timestamp en MILISEGUNDOS (formato JavaScript/Firebase)
-  // 1 enero 2025 00:00:00 UTC = 1735689600000
-  unsigned long long base = 1735689600000ULL;
-  return base + millis();
+  // Usar timestamp de 32 bits (suficiente hasta 2038)
+  // O simplemente usar millis() directamente
+  return millis();
 }
 
 // FUNCION: Sincronizar tiempo con Firebase
@@ -183,7 +182,7 @@ void enviarDatosCalibracion() {
   json += "\"sensor2Fault\":false";
   json += "}";
   
-  String path = "/lecturas/" + String(timestampUnix) + ".json";
+  String path = "/lecturas/" + String((unsigned long)timestampUnix) + ".json";
   
   client.beginRequest();
   client.put(path.c_str());
@@ -213,7 +212,7 @@ void enviarHeartbeat() {
   String path = "/dispositivos/arduino_001.json";
   String json = "{";
   json += "\"estado\":\"online\",";
-  json += "\"ultimaConexion\":" + String(getTimestampUnix()) + ",";
+  json += "\"ultimaConexion\":" + String((unsigned long)getTimestampUnix()) + ",";
   json += "\"rssi\":" + String(WiFi.RSSI());
   json += "}";
   
@@ -353,7 +352,7 @@ void enviarDatosFirebase() {
   bool led1Activo = LED_PISO1_ACTIVO && cond1;
   bool led2Activo = LED_PISO2_ACTIVO && cond2;
   
-  unsigned long timestampUnix = getTimestampUnix();
+ unsigned long timestampUnix = getTimestampUnix();
 
   String json = "{";
   json += "\"dispositivo\":\"arduino_001\",";
@@ -387,7 +386,7 @@ void enviarDatosFirebase() {
   
   json += "}";
   
-  String path = "/lecturas/" + String(timestampUnix) + ".json";
+  String path = "/lecturas/" + String((unsigned long)timestampUnix) + ".json";
   
   client.beginRequest();
   client.put(path.c_str());
