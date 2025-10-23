@@ -593,15 +593,14 @@ function App() {
     try {
       mostrarNotificacion('🔇 Apagando buzzer...', 'info');
       
-      // Enviar comando para apagar buzzer al Arduino
-      const buzzerRef = ref(db, 'comandos/apagar_buzzer');
-      await set(buzzerRef, {
-        timestamp: Date.now(),
-        comando: 'apagar_buzzer',
-        origen: 'dashboard'
+      // Desactivar ambos buzzers en la configuración del sistema
+      const configRef = ref(db, 'configuracion/sistema');
+      await update(configRef, { 
+        buzzerPiso1Activo: false,
+        buzzerPiso2Activo: false
       });
       
-      mostrarNotificacion('✅ Comando para apagar buzzer enviado al Arduino', 'success');
+      mostrarNotificacion('✅ Buzzers desactivados - El Arduino los apagará automáticamente', 'success');
     } catch (error) {
       console.error('Error al apagar buzzer:', error);
       mostrarNotificacion('❌ Error al apagar buzzer', 'error');
