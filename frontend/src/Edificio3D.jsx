@@ -31,14 +31,21 @@ function Edificio({ piso1Alerta, piso2Alerta, puertaAbierta, buzzerPiso1, buzzer
       piso2Ref.current.material.emissiveIntensity = Math.sin(time * 5) * 0.5 + 0.5;
     }
 
-    // Animación de la puerta
+    // Animación de la puerta - MEJORADA PARA MAYOR VISIBILIDAD
     if (puertaRef.current) {
       const targetRotation = puertaAbierta ? -Math.PI / 2 : 0;
-      const targetPosition = puertaAbierta ? 0.4 : 0;
+      const targetPosition = puertaAbierta ? 0.6 : 0; // Aumentado para mayor apertura
       
-      // Interpolación suave
-      puertaRef.current.rotation.y += (targetRotation - puertaRef.current.rotation.y) * 0.1;
-      puertaRef.current.position.x += (targetPosition - puertaRef.current.position.x) * 0.1;
+      // Interpolación muy lenta y suave
+      puertaRef.current.rotation.y += (targetRotation - puertaRef.current.rotation.y) * 0.02;
+      puertaRef.current.position.x += (targetPosition - puertaRef.current.position.x) * 0.02;
+      
+      // Efecto de brillo cuando se abre
+      if (puertaAbierta) {
+        puertaRef.current.material.emissiveIntensity = Math.sin(time * 3) * 0.2 + 0.8;
+      } else {
+        puertaRef.current.material.emissiveIntensity = 0.3;
+      }
     }
 
     // Animación de sensores
@@ -300,12 +307,11 @@ function Edificio({ piso1Alerta, piso2Alerta, puertaAbierta, buzzerPiso1, buzzer
         </Text>
       </group>
 
-      {/* PUERTA PRINCIPAL */}
+      {/* PUERTA PRINCIPAL - ANIMACIÓN DINÁMICA */}
       <group position={[0, 0.8, 1.76]}>
         <mesh
           ref={puertaRef}
-          rotation={[0, puertaAbierta ? -Math.PI / 2 : 0, 0]}
-          position={[puertaAbierta ? 0.4 : 0, 0, 0]}
+          // Removidos valores estáticos - solo animación dinámica
         >
           <boxGeometry args={[0.8, 1.4, 0.1]} />
           <meshStandardMaterial
@@ -331,15 +337,27 @@ function Edificio({ piso1Alerta, piso2Alerta, puertaAbierta, buzzerPiso1, buzzer
           {puertaAbierta ? 'ABIERTA' : 'CERRADA'}
         </Text>
 
-        {/* Indicador visual de estado */}
+        {/* Indicador visual de estado - MEJORADO */}
         <mesh position={[0, -0.5, 0.06]}>
           <sphereGeometry args={[0.05, 8, 8]} />
           <meshStandardMaterial
             color={puertaAbierta ? '#10b981' : '#ef4444'}
             emissive={puertaAbierta ? '#10b981' : '#ef4444'}
-            emissiveIntensity={1}
+            emissiveIntensity={puertaAbierta ? 1.5 : 1}
           />
         </mesh>
+        
+        {/* Efecto de apertura - Línea de luz cuando está abierta */}
+        {puertaAbierta && (
+          <mesh position={[0.3, 0, 0.05]}>
+            <boxGeometry args={[0.02, 1.4, 0.01]} />
+            <meshStandardMaterial
+              color="#10b981"
+              emissive="#10b981"
+              emissiveIntensity={2}
+            />
+          </mesh>
+        )}
       </group>
 
       {/* Techo */}
@@ -510,7 +528,7 @@ export default function Edificio3D() {
   useEffect(() => {
     console.log('🔥 Iniciando escucha de configuración en tiempo real...');
 
-    const configRef = ref(db, 'configuracion');
+    const configRef = ref(db, 'configuracion/sistema');
 
     const unsubscribe = onValue(configRef, (snapshot) => {
       if (snapshot.exists()) {
