@@ -352,15 +352,18 @@ body::before {
   display: flex;
   gap: 0.75rem;
   padding: 1rem 2rem;
-  background: rgba(15, 23, 42, 0.6);
-  backdrop-filter: blur(20px);
+  background: rgba(15, 23, 42, 0.95);
+  backdrop-filter: blur(25px);
   border-bottom: 1px solid var(--border-color);
-  position: sticky;
-  top: 88px;
+  position: fixed;
+  top: 100px; /* 🔥 AUMENTADO: más espacio desde el top (antes era 88px) */
+  left: 0;
+  right: 0;
   z-index: 99;
   overflow-x: auto;
   scrollbar-width: thin;
   scrollbar-color: var(--primary-color) transparent;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
 }
 
 .nav-tabs::-webkit-scrollbar {
@@ -452,6 +455,7 @@ body::before {
   max-width: 1400px;
   margin: 0 auto;
   padding: 2rem;
+  padding-top: calc(2rem + 82px); /* 🔥 AUMENTADO: más espacio para el nav (antes era 70px) */
   flex: 1;
   width: 100%;
   position: relative;
@@ -695,16 +699,16 @@ body::before {
    ============================================ */
 .sensors-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
-  gap: 2rem;
-  margin-bottom: 2rem;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); /* 🔥 REDUCIDO de 350px */
+  gap: 1.5rem; /* 🔥 REDUCIDO de 2rem */
+  margin-bottom: 1.5rem; /* 🔥 REDUCIDO de 2rem */
 }
 
 .sensor-card {
   background: rgba(30, 41, 59, 0.6);
   backdrop-filter: blur(20px);
-  border-radius: 24px;
-  padding: 2rem;
+  border-radius: 20px; /* 🔥 REDUCIDO de 24px */
+  padding: 1.5rem; /* 🔥 REDUCIDO de 2rem */
   border: 2px solid rgba(99, 102, 241, 0.2);
   box-shadow: var(--shadow-md);
   transition: all var(--transition-base);
@@ -782,10 +786,10 @@ body::before {
 }
 
 .sensor-value {
-  font-size: 3.5rem;
+  font-size: 2.5rem; /* 🔥 REDUCIDO de 3.5rem */
   font-weight: 900;
   text-align: center;
-  margin: 2rem 0;
+  margin: 1.5rem 0; /* 🔥 REDUCIDO de 2rem 0 */
   background: linear-gradient(135deg, var(--accent-blue), var(--accent-purple));
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
@@ -940,11 +944,11 @@ body::before {
 .door-control {
   background: rgba(30, 41, 59, 0.6);
   backdrop-filter: blur(20px);
-  border-radius: 24px;
-  padding: 2rem;
+  border-radius: 20px; /* 🔥 REDUCIDO de 24px */
+  padding: 1.5rem; /* 🔥 REDUCIDO de 2rem */
   border: 2px solid rgba(99, 102, 241, 0.2);
   box-shadow: var(--shadow-md);
-  margin-bottom: 2rem;
+  margin-bottom: 1.5rem; /* 🔥 REDUCIDO de 2rem */
   transition: all var(--transition-base);
 }
 
@@ -956,10 +960,10 @@ body::before {
 .door-control h3 {
   display: flex;
   align-items: center;
-  gap: 1rem;
-  font-size: 1.3rem;
+  gap: 0.75rem; /* 🔥 REDUCIDO de 1rem */
+  font-size: 1.2rem; /* 🔥 REDUCIDO de 1.3rem */
   font-weight: 700;
-  margin-bottom: 1.5rem;
+  margin-bottom: 1.25rem; /* 🔥 REDUCIDO de 1.5rem */
   color: var(--text-primary);
 }
 
@@ -974,14 +978,14 @@ body::before {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 0.75rem;
-  padding: 1.25rem;
+  gap: 0.5rem; /* 🔥 REDUCIDO de 0.75rem */
+  padding: 1rem; /* 🔥 REDUCIDO de 1.25rem */
   border: 2px solid rgba(255, 255, 255, 0.1);
-  border-radius: 16px;
+  border-radius: 14px; /* 🔥 REDUCIDO de 16px */
   background: rgba(255, 255, 255, 0.05);
   color: var(--text-primary);
   font-weight: 700;
-  font-size: 1rem;
+  font-size: 0.95rem; /* 🔥 REDUCIDO de 1rem */
   cursor: pointer;
   transition: all var(--transition-base);
   position: relative;
