@@ -2,7 +2,7 @@ import { useRef, useState, useEffect } from 'react';
 import { Canvas, useFrame } from '@react-three/fiber';
 import { OrbitControls, Text } from '@react-three/drei';
 import { db } from './firebase';
-import { ref, get, set } from 'firebase/database';
+import { ref, get, set, onValue, query, orderByKey, limitToLast } from 'firebase/database';
 
 // Componente del edificio
 function Edificio({ piso1Alerta, piso2Alerta, puertaAbierta, buzzerPiso1, buzzerPiso2, ledPiso1, ledPiso2, posiciones }) {
@@ -29,6 +29,16 @@ function Edificio({ piso1Alerta, piso2Alerta, puertaAbierta, buzzerPiso1, buzzer
 
     if (piso2Ref.current && piso2Alerta) {
       piso2Ref.current.material.emissiveIntensity = Math.sin(time * 5) * 0.5 + 0.5;
+    }
+
+    // Animación de la puerta
+    if (puertaRef.current) {
+      const targetRotation = puertaAbierta ? -Math.PI / 2 : 0;
+      const targetPosition = puertaAbierta ? 0.4 : 0;
+      
+      // Interpolación suave
+      puertaRef.current.rotation.y += (targetRotation - puertaRef.current.rotation.y) * 0.1;
+      puertaRef.current.position.x += (targetPosition - puertaRef.current.position.x) * 0.1;
     }
 
     // Animación de sensores
@@ -301,19 +311,35 @@ function Edificio({ piso1Alerta, piso2Alerta, puertaAbierta, buzzerPiso1, buzzer
           <meshStandardMaterial
             color={puertaAbierta ? '#34d399' : '#64748b'}
             emissive={puertaAbierta ? '#10b981' : '#1e293b'}
-            emissiveIntensity={0.3}
+            emissiveIntensity={puertaAbierta ? 0.8 : 0.3}
           />
+        </mesh>
+
+        {/* Marco de la puerta */}
+        <mesh position={[0, 0, -0.05]}>
+          <boxGeometry args={[0.9, 1.5, 0.05]} />
+          <meshStandardMaterial color="#374151" />
         </mesh>
 
         <Text
           position={[0, 0.9, 0.06]}
-          fontSize={0.15}
-          color="#ffffff"
+          fontSize={0.12}
+          color={puertaAbierta ? '#10b981' : '#ffffff'}
           anchorX="center"
           anchorY="middle"
         >
           {puertaAbierta ? 'ABIERTA' : 'CERRADA'}
         </Text>
+
+        {/* Indicador visual de estado */}
+        <mesh position={[0, -0.5, 0.06]}>
+          <sphereGeometry args={[0.05, 8, 8]} />
+          <meshStandardMaterial
+            color={puertaAbierta ? '#10b981' : '#ef4444'}
+            emissive={puertaAbierta ? '#10b981' : '#ef4444'}
+            emissiveIntensity={1}
+          />
+        </mesh>
       </group>
 
       {/* Techo */}
@@ -355,6 +381,7 @@ function Edificio({ piso1Alerta, piso2Alerta, puertaAbierta, buzzerPiso1, buzzer
     </group>
   );
 }
+
 // ============================================
 // MODAL DE CONFIRMACIÓN PERSONALIZADO
 // ============================================
@@ -395,79 +422,456 @@ function ConfirmModal({ isOpen, onConfirm, onCancel, title, message }) {
 // ============================================
 // COMPONENTE PRINCIPAL EXPORTABLE
 // ============================================
-export default function Edificio3D({ piso1Alerta, piso2Alerta, puertaAbierta, buzzerPiso1, buzzerPiso2, ledPiso1, ledPiso2 }) {
-  const [posiciones, setPosiciones] = useState({
-    sensor: { x: -0.15, y: 0, z: 0.05 },
-    buzzer: { x: -0.85, y: 0, z: 0.05 },
-    led: { x: 1.55, y: 0, z: 0.05 }
-  });
+export default function Edificio3D() {
+  // Posiciones por defecto
+  const posicionesDefault = {
+    sensor: { x: 1.8, y: 0, z: 1.0 },
+    buzzer: { x: -1.8, y: 0, z: 1.0 },
+    led: { x: 0, y: 0, z: 1.0 }
+  };
 
+  // Estados de posiciones
+  const [posiciones, setPosiciones] = useState(posicionesDefault);
+  const [posicionesCargadas, setPosicionesCargadas] = useState(false);
+  const [mostrarControles, setMostrarControles] = useState(false);
   const [modoEdicion, setModoEdicion] = useState(false);
+  const [showModal, setShowModal] = useState(false);
 
+  // 🔥 NUEVO: Estados para lecturas en tiempo real
+  const [piso1Alerta, setPiso1Alerta] = useState(false);
+  const [piso2Alerta, setPiso2Alerta] = useState(false);
+  const [puertaAbierta, setPuertaAbierta] = useState(false);
+  const [buzzerPiso1, setBuzzerPiso1] = useState(false);
+  const [buzzerPiso2, setBuzzerPiso2] = useState(false);
+  const [ledPiso1, setLedPiso1] = useState(false);
+  const [ledPiso2, setLedPiso2] = useState(false);
+  const [ultimaLectura, setUltimaLectura] = useState(null);
+
+  // ============================================
+  // 🔥 MEJORADO: ESCUCHAR LECTURAS EN TIEMPO REAL CON FILTRO ARDUINO
+  // ============================================
+  useEffect(() => {
+    console.log('🔥 Iniciando escucha en tiempo real de Firebase (solo Arduino)...');
+
+    // Escuchar todas las lecturas y filtrar solo las del Arduino
+    const lecturasRef = ref(db, 'lecturas');
+
+    const unsubscribe = onValue(lecturasRef, (snapshot) => {
+      if (snapshot.exists()) {
+        const data = snapshot.val();
+        const keys = Object.keys(data).sort((a, b) => b - a);
+
+        // Buscar la última lectura del Arduino (no simulación)
+        let lecturaArduino = null;
+        for (let i = 0; i < keys.length; i++) {
+          const key = keys[i];
+          const lectura = data[key];
+          
+          // Filtrar solo lecturas del Arduino real
+          if (lectura.dispositivo === "arduino_001" || 
+              (!lectura.dispositivo && !lectura.modoSimulacion)) {
+            lecturaArduino = lectura;
+            break;
+          }
+        }
+
+        if (lecturaArduino) {
+          console.log('📊 Nueva lectura Arduino recibida:', lecturaArduino);
+
+          // Actualizar estados con la nueva lectura
+          setUltimaLectura(lecturaArduino);
+          setPiso1Alerta(lecturaArduino.sensor1Alerta || false);
+          setPiso2Alerta(lecturaArduino.sensor2Alerta || false);
+
+          // También actualizar el indicador visual
+          console.log('🏢 Estado del edificio actualizado:', {
+            piso1: lecturaArduino.sensor1Alerta ? '🔴 ALERTA' : '✅ Normal',
+            piso2: lecturaArduino.sensor2Alerta ? '🔴 ALERTA' : '✅ Normal',
+            timestamp: new Date(lecturaArduino.timestamp).toLocaleTimeString()
+          });
+        } else {
+          console.log('⚠️ No hay lecturas del Arduino disponibles');
+        }
+      }
+    }, (error) => {
+      console.error('❌ Error al escuchar lecturas:', error);
+    });
+
+    // Limpiar el listener cuando el componente se desmonte
+    return () => {
+      console.log('🛑 Deteniendo escucha de Firebase');
+      unsubscribe();
+    };
+  }, []);
+
+  // ============================================
+  // 🔥 NUEVO: ESCUCHAR CONFIGURACIÓN EN TIEMPO REAL
+  // ============================================
+  useEffect(() => {
+    console.log('🔥 Iniciando escucha de configuración en tiempo real...');
+
+    const configRef = ref(db, 'configuracion');
+
+    const unsubscribe = onValue(configRef, (snapshot) => {
+      if (snapshot.exists()) {
+        const config = snapshot.val();
+        console.log('⚙️ Configuración actualizada:', config);
+
+        // Actualizar estados de dispositivos
+        setBuzzerPiso1(config.buzzerPiso1Activo || false);
+        setBuzzerPiso2(config.buzzerPiso2Activo || false);
+        setLedPiso1(config.ledPiso1Activo || false);
+        setLedPiso2(config.ledPiso2Activo || false);
+        setPuertaAbierta(config.servoAbierto || false);
+      }
+    }, (error) => {
+      console.error('❌ Error al escuchar configuración:', error);
+    });
+
+    return () => {
+      console.log('🛑 Deteniendo escucha de configuración');
+      unsubscribe();
+    };
+  }, []);
+
+  // ============================================
+  // CARGAR POSICIONES DESDE FIREBASE
+  // ============================================
   useEffect(() => {
     const cargarPosiciones = async () => {
       try {
-        const posicionesRef = ref(db, 'posiciones3D');
-        const snapshot = await get(posicionesRef);
+        const posRef = ref(db, 'edificioPosiciones/posicionesEdificio');
+        const snapshot = await get(posRef);
+
         if (snapshot.exists()) {
-          setPosiciones(snapshot.val());
+          const data = snapshot.val();
+          setPosiciones(data);
+          console.log('✅ Posiciones cargadas desde Realtime DB:', data);
+        } else {
+          console.log('ℹ️ No hay posiciones guardadas, usando valores por defecto');
+          await set(posRef, posicionesDefault);
         }
       } catch (error) {
-        console.error('Error al cargar posiciones:', error);
+        console.error('❌ Error al cargar posiciones:', error);
+      } finally {
+        setPosicionesCargadas(true);
       }
     };
+
     cargarPosiciones();
   }, []);
 
-  const actualizarPosicion = async (componente, eje, valor) => {
-    const nuevoValor = parseFloat(valor);
+  // ============================================
+  // GUARDAR POSICIONES EN FIREBASE
+  // ============================================
+  const guardarPosiciones = async (nuevasPosiciones) => {
+    if (!modoEdicion) return;
+
+    try {
+      const posRef = ref(db, 'edificioPosiciones/posicionesEdificio');
+      await set(posRef, nuevasPosiciones);
+      console.log('💾 Posiciones guardadas en Realtime DB:', nuevasPosiciones);
+    } catch (error) {
+      console.error('❌ Error al guardar posiciones:', error);
+    }
+  };
+
+  // ============================================
+  // ACTUALIZAR POSICIÓN CON AUTOSAVE
+  // ============================================
+  const actualizarPosicion = (componente, eje, valor) => {
     const nuevasPosiciones = {
       ...posiciones,
       [componente]: {
         ...posiciones[componente],
-        [eje]: nuevoValor
+        [eje]: parseFloat(valor)
       }
     };
+
     setPosiciones(nuevasPosiciones);
-    try {
-      const posicionesRef = ref(db, 'posiciones3D');
-      await set(posicionesRef, nuevasPosiciones);
-    } catch (error) {
-      console.error('Error al guardar posición:', error);
+    guardarPosiciones(nuevasPosiciones);
+  };
+
+  // ============================================
+  // TOGGLE MODO EDICIÓN CON MODAL
+  // ============================================
+  const handleToggleModoEdicion = () => {
+    if (!modoEdicion) {
+      setShowModal(true);
+    } else {
+      setModoEdicion(false);
+      console.log('🔒 Modo edición DESACTIVADO');
     }
   };
 
- return (
-  <div className="edificio-3d-container">
-    {/* CARD DEL MODELO 3D - OCUPA TODO */}
-    <div className="edificio-main-card">
-      {/* HEADER CON TÍTULO Y BOTÓN */}
-      <div className="card-header">
-        <h2 className="card-title">
-          <span>🏢</span>
-          <span>Edificio en Tiempo Real</span>
-        </h2>
-        <button 
-          className="toggle-controls-btn"
-          onClick={() => setModoEdicion(!modoEdicion)}
+  const confirmarActivacion = () => {
+    setModoEdicion(true);
+    setShowModal(false);
+    console.log('✏️ Modo edición ACTIVADO');
+  };
+
+  const cancelarActivacion = () => {
+    setShowModal(false);
+  };
+
+  if (!posicionesCargadas) {
+    return (
+      <div style={{
+        display: 'flex',
+        justifyContent: 'center',
+        alignItems: 'center',
+        height: '100vh',
+        color: 'white',
+        fontSize: '1.5rem'
+      }}>
+        Cargando edificio...
+      </div>
+    );
+  }
+
+  return (
+    <div className="edificio-3d-container">
+      {/* Modal de confirmación */}
+      <ConfirmModal
+        isOpen={showModal}
+        onConfirm={confirmarActivacion}
+        onCancel={cancelarActivacion}
+        title="⚠️ Activar Modo Edición"
+        message="Estás a punto de activar el modo de edición. Esto te permitirá mover los componentes del edificio (sensores, buzzers y LEDs). ¿Deseas continuar?"
+      />
+
+      {/* PANEL DE CONTROLES */}
+      <div className={`panel-controles ${mostrarControles ? 'visible' : ''}`}>
+        <button
+          className="toggle-panel-btn"
+          onClick={() => setMostrarControles(!mostrarControles)}
+          title={mostrarControles ? "Ocultar controles" : "Mostrar controles"}
         >
-          <span>⚙️</span>
-          <span>MOSTRAR CONTROLES</span>
-          <span>{modoEdicion ? '▲' : '▼'}</span>
+          {mostrarControles ? '◀' : '▶'}
         </button>
+
+        <div className="controles-content">
+          <div className="controles-header">
+            <h3>🎮 Panel de Control</h3>
+            <p className="controles-subtitle">Configuración del edificio</p>
+
+            {/* 🔥 NUEVO: Indicador de estado en tiempo real */}
+            <div className="estado-tiempo-real">
+              <div className="estado-item">
+                <span className={`estado-badge ${piso1Alerta ? 'alerta' : 'normal'}`}>
+                  Piso 1: {piso1Alerta ? '🔴 ALERTA' : '✅ Normal'}
+                </span>
+              </div>
+              <div className="estado-item">
+                <span className={`estado-badge ${piso2Alerta ? 'alerta' : 'normal'}`}>
+                  Piso 2: {piso2Alerta ? '🔴 ALERTA' : '✅ Normal'}
+                </span>
+              </div>
+              <div className="estado-item">
+                <span className={`estado-badge ${puertaAbierta ? 'puerta-abierta' : 'puerta-cerrada'}`}>
+                  Puerta: {puertaAbierta ? '🚪 ABIERTA' : '🚪 CERRADA'}
+                </span>
+              </div>
+              {ultimaLectura && (
+                <div className="lecturas-actuales">
+                  <small>Sensor 1: {ultimaLectura.valorSensor1}</small>
+                  <small>Sensor 2: {ultimaLectura.valorSensor2}</small>
+                </div>
+              )}
+            </div>
+
+            <div className="modo-edicion-toggle">
+              <label className="toggle-switch">
+                <input
+                  type="checkbox"
+                  checked={modoEdicion}
+                  onChange={handleToggleModoEdicion}
+                />
+                <span className="toggle-slider"></span>
+              </label>
+              <span className="toggle-label">
+                {modoEdicion ? '🔓 Modo Edición' : '🔒 Bloqueado'}
+              </span>
+            </div>
+
+            {modoEdicion && (
+              <div className="modo-edicion-badge">
+                <span className="badge-icon">✏️</span>
+                <span className="badge-text">Modo Edición Activo</span>
+                <span className="badge-pulse"></span>
+              </div>
+            )}
+          </div>
+
+          {/* CONTROLES DE POSICIÓN */}
+          <div className={`posicion-controls ${!modoEdicion ? 'disabled' : ''}`}>
+            {!modoEdicion && (
+              <div className="overlay-disabled">
+                <div className="overlay-message">
+                  <span className="overlay-icon">🔒</span>
+                  <p>Activa el <strong>Modo Edición</strong> para modificar las posiciones</p>
+                </div>
+              </div>
+            )}
+
+            <div className="controls-header">
+              <h4>🎮 Controles de Posición</h4>
+              <span className="autosave-badge">
+                💾 AUTOSAVE ACTIVO
+              </span>
+            </div>
+
+            <p className="controls-subtitle">
+              Límites: X: -2.75 a 2.75, Z: -1.75 a 1.75
+            </p>
+
+            {/* SENSOR */}
+            <div className="control-group sensor-group">
+              <div className="control-group-header">
+                <span className="control-icon">📡</span>
+                <h5>Sensor (Derecha)</h5>
+              </div>
+              <div className="sliders-grid">
+                <label className="slider-control">
+                  <span className="slider-label">X: {posiciones.sensor.x}</span>
+                  <input
+                    type="range"
+                    min="-2.75"
+                    max="2.75"
+                    step="0.1"
+                    value={posiciones.sensor.x}
+                    onChange={(e) => actualizarPosicion('sensor', 'x', e.target.value)}
+                    disabled={!modoEdicion}
+                  />
+                </label>
+                <label className="slider-control">
+                  <span className="slider-label">Y: {posiciones.sensor.y}</span>
+                  <input
+                    type="range"
+                    min="-0.5"
+                    max="0.7"
+                    step="0.1"
+                    value={posiciones.sensor.y}
+                    onChange={(e) => actualizarPosicion('sensor', 'y', e.target.value)}
+                    disabled={!modoEdicion}
+                  />
+                </label>
+                <label className="slider-control">
+                  <span className="slider-label">Z: {posiciones.sensor.z}</span>
+                  <input
+                    type="range"
+                    min="-1.75"
+                    max="1.75"
+                    step="0.1"
+                    value={posiciones.sensor.z}
+                    onChange={(e) => actualizarPosicion('sensor', 'z', e.target.value)}
+                    disabled={!modoEdicion}
+                  />
+                </label>
+              </div>
+            </div>
+
+            {/* BUZZER */}
+            <div className="control-group buzzer-group">
+              <div className="control-group-header">
+                <span className="control-icon">🔊</span>
+                <h5>Buzzer (Izquierda)</h5>
+              </div>
+              <div className="sliders-grid">
+                <label className="slider-control">
+                  <span className="slider-label">X: {posiciones.buzzer.x}</span>
+                  <input
+                    type="range"
+                    min="-2.75"
+                    max="2.75"
+                    step="0.1"
+                    value={posiciones.buzzer.x}
+                    onChange={(e) => actualizarPosicion('buzzer', 'x', e.target.value)}
+                    disabled={!modoEdicion}
+                  />
+                </label>
+                <label className="slider-control">
+                  <span className="slider-label">Y: {posiciones.buzzer.y}</span>
+                  <input
+                    type="range"
+                    min="-0.5"
+                    max="0.7"
+                    step="0.1"
+                    value={posiciones.buzzer.y}
+                    onChange={(e) => actualizarPosicion('buzzer', 'y', e.target.value)}
+                    disabled={!modoEdicion}
+                  />
+                </label>
+                <label className="slider-control">
+                  <span className="slider-label">Z: {posiciones.buzzer.z}</span>
+                  <input
+                    type="range"
+                    min="-1.75"
+                    max="1.75"
+                    step="0.1"
+                    value={posiciones.buzzer.z}
+                    onChange={(e) => actualizarPosicion('buzzer', 'z', e.target.value)}
+                    disabled={!modoEdicion}
+                  />
+                </label>
+              </div>
+            </div>
+
+            {/* LED */}
+            <div className="control-group led-group">
+              <div className="control-group-header">
+                <span className="control-icon">💡</span>
+                <h5>LED (Centro)</h5>
+              </div>
+              <div className="sliders-grid">
+                <label className="slider-control">
+                  <span className="slider-label">X: {posiciones.led.x}</span>
+                  <input
+                    type="range"
+                    min="-2.75"
+                    max="2.75"
+                    step="0.1"
+                    value={posiciones.led.x}
+                    onChange={(e) => actualizarPosicion('led', 'x', e.target.value)}
+                    disabled={!modoEdicion}
+                  />
+                </label>
+                <label className="slider-control">
+                  <span className="slider-label">Y: {posiciones.led.y}</span>
+                  <input
+                    type="range"
+                    min="-0.5"
+                    max="0.7"
+                    step="0.1"
+                    value={posiciones.led.y}
+                    onChange={(e) => actualizarPosicion('led', 'y', e.target.value)}
+                    disabled={!modoEdicion}
+                  />
+                </label>
+                <label className="slider-control">
+                  <span className="slider-label">Z: {posiciones.led.z}</span>
+                  <input
+                    type="range"
+                    min="-1.75"
+                    max="1.75"
+                    step="0.1"
+                    value={posiciones.led.z}
+                    onChange={(e) => actualizarPosicion('led', 'z', e.target.value)}
+                    disabled={!modoEdicion}
+                  />
+                </label>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
 
-      {/* CANVAS 3D - OCUPA TODO EL ESPACIO */}
-      <div className="canvas-area">
-        {modoEdicion && (
-          <div className="modo-edicion-badge">
-            <span className="badge-icon">✏️</span>
-            <span className="badge-text">Modo Edición Activo</span>
-            <span className="badge-pulse"></span>
-          </div>
-        )}
-
-        <Canvas camera={{ position: [8, 4, 8], fov: 50 }} shadows>
+      {/* CANVAS 3D */}
+      <div className="edificio-canvas">
+        <Canvas
+          camera={{ position: [8, 4, 8], fov: 50 }}
+          shadows
+        >
           <ambientLight intensity={0.4} />
           <directionalLight
             position={[10, 10, 5]}
@@ -507,145 +911,5 @@ export default function Edificio3D({ piso1Alerta, piso2Alerta, puertaAbierta, bu
         </Canvas>
       </div>
     </div>
-
-    {/* PANEL DE CONTROLES - CARD SEPARADA */}
-    {modoEdicion && (
-      <div className="edificio-controls-panel">
-        <div className="panel-header">
-          <h3 className="panel-title">
-            <span>⚙️</span>
-            <span>Panel de Control</span>
-          </h3>
-          <p className="panel-subtitle">Estado del sistema y controles de edición</p>
-        </div>
-
-        <div className="panel-content">
-          <div className="system-status">
-            <h4 style={{ margin: '0 0 1rem 0', fontSize: '0.95rem', color: '#ffffff' }}>📊 Estado del Sistema</h4>
-            <div className="status-item">
-              <span className="status-label">Piso 1 (A0)</span>
-              <span className={`status-value ${piso1Alerta ? 'alert' : 'active'}`}>
-                <span className="status-dot"></span>
-                {piso1Alerta ? 'Alerta' : 'Normal'}
-              </span>
-            </div>
-            <div className="status-item">
-              <span className="status-label">Piso 2 (A3)</span>
-              <span className={`status-value ${piso2Alerta ? 'alert' : 'active'}`}>
-                <span className="status-dot"></span>
-                {piso2Alerta ? 'Alerta' : 'Normal'}
-              </span>
-            </div>
-            <div className="status-item">
-              <span className="status-label">Puerta</span>
-              <span className={`status-value ${puertaAbierta ? 'alert' : 'active'}`}>
-                {puertaAbierta ? '🚪 Abierta' : '🔒 Cerrada'}
-              </span>
-            </div>
-          </div>
-
-          <div className="posicion-controls">
-            <div className="controls-header">
-              <h4>🎮 Controles de Posición</h4>
-              <span className="autosave-badge">💾 AUTOSAVE ACTIVO</span>
-            </div>
-            <p className="controls-subtitle">Límites: X: -2.75 a 2.75, Z: -1.75 a 1.75</p>
-
-            <div className="controls-grid">
-              <div className="control-group">
-                <div className="control-group-header">
-                  <span className="control-icon">📡</span>
-                  <h5>Sensor (Derecha)</h5>
-                </div>
-                <div className="sliders-grid">
-                  <label className="slider-control">
-                    <span className="slider-label">
-                      <span>X:</span>
-                      <strong>{posiciones.sensor.x}</strong>
-                    </span>
-                    <input type="range" min="-2.75" max="2.75" step="0.1" value={posiciones.sensor.x} onChange={(e) => actualizarPosicion('sensor', 'x', e.target.value)} />
-                  </label>
-                  <label className="slider-control">
-                    <span className="slider-label">
-                      <span>Y:</span>
-                      <strong>{posiciones.sensor.y}</strong>
-                    </span>
-                    <input type="range" min="-0.5" max="0.7" step="0.1" value={posiciones.sensor.y} onChange={(e) => actualizarPosicion('sensor', 'y', e.target.value)} />
-                  </label>
-                  <label className="slider-control">
-                    <span className="slider-label">
-                      <span>Z:</span>
-                      <strong>{posiciones.sensor.z}</strong>
-                    </span>
-                    <input type="range" min="-1.75" max="1.75" step="0.1" value={posiciones.sensor.z} onChange={(e) => actualizarPosicion('sensor', 'z', e.target.value)} />
-                  </label>
-                </div>
-              </div>
-
-              <div className="control-group">
-                <div className="control-group-header">
-                  <span className="control-icon">🔊</span>
-                  <h5>Buzzer (Izquierda)</h5>
-                </div>
-                <div className="sliders-grid">
-                  <label className="slider-control">
-                    <span className="slider-label">
-                      <span>X:</span>
-                      <strong>{posiciones.buzzer.x}</strong>
-                    </span>
-                    <input type="range" min="-2.75" max="2.75" step="0.1" value={posiciones.buzzer.x} onChange={(e) => actualizarPosicion('buzzer', 'x', e.target.value)} />
-                  </label>
-                  <label className="slider-control">
-                    <span className="slider-label">
-                      <span>Y:</span>
-                      <strong>{posiciones.buzzer.y}</strong>
-                    </span>
-                    <input type="range" min="-0.5" max="0.7" step="0.1" value={posiciones.buzzer.y} onChange={(e) => actualizarPosicion('buzzer', 'y', e.target.value)} />
-                  </label>
-                  <label className="slider-control">
-                    <span className="slider-label">
-                      <span>Z:</span>
-                      <strong>{posiciones.buzzer.z}</strong>
-                    </span>
-                    <input type="range" min="-1.75" max="1.75" step="0.1" value={posiciones.buzzer.z} onChange={(e) => actualizarPosicion('buzzer', 'z', e.target.value)} />
-                  </label>
-                </div>
-              </div>
-
-              <div className="control-group">
-                <div className="control-group-header">
-                  <span className="control-icon">💡</span>
-                  <h5>LED (Centro)</h5>
-                </div>
-                <div className="sliders-grid">
-                  <label className="slider-control">
-                    <span className="slider-label">
-                      <span>X:</span>
-                      <strong>{posiciones.led.x}</strong>
-                    </span>
-                    <input type="range" min="-2.75" max="2.75" step="0.1" value={posiciones.led.x} onChange={(e) => actualizarPosicion('led', 'x', e.target.value)} />
-                  </label>
-                  <label className="slider-control">
-                    <span className="slider-label">
-                      <span>Y:</span>
-                      <strong>{posiciones.led.y}</strong>
-                    </span>
-                    <input type="range" min="-0.5" max="0.7" step="0.1" value={posiciones.led.y} onChange={(e) => actualizarPosicion('led', 'y', e.target.value)} />
-                  </label>
-                  <label className="slider-control">
-                    <span className="slider-label">
-                      <span>Z:</span>
-                      <strong>{posiciones.led.z}</strong>
-                    </span>
-                    <input type="range" min="-1.75" max="1.75" step="0.1" value={posiciones.led.z} onChange={(e) => actualizarPosicion('led', 'z', e.target.value)} />
-                  </label>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    )}
-  </div>
-);
+  );
 }

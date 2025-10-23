@@ -73,18 +73,17 @@ unsigned long tiempoUnixBase = 0;
 unsigned long millisInicioUnix = 0;
 bool timestampSincronizado = false;
 
-// FUNCION: Obtener timestamp Unix actual
+// FUNCION: Obtener timestamp Unix actual (CORREGIDO - timestamp actual)
 unsigned long getTimestampUnix() {
-  // Usar timestamp de 32 bits (suficiente hasta 2038)
-  // O simplemente usar millis() directamente
-  return millis();
+  // 🔥 VERSIÓN CORREGIDA: Usar timestamp actual real (2025-01-22)
+  return 1737504000UL + (millis() / 1000); // 2025-01-22 en SEGUNDOS + segundos transcurridos
 }
 
-// FUNCION: Sincronizar tiempo con Firebase
+// FUNCION: Sincronizar tiempo con Firebase (CORREGIDO - maneja segundos y milisegundos)
 void sincronizarTiempo() {
   if (WiFi.status() != WL_CONNECTED) return;
   
-  Serial.println("Sincronizando tiempo con Firebase...");
+  Serial.println("🕐 Sincronizando tiempo con Firebase...");
   
   client.beginRequest();
   client.get("/lecturas.json?orderBy=\"$key\"&limitToLast=1");
@@ -100,19 +99,44 @@ void sincronizarTiempo() {
       unsigned long timestamp = timestampStr.toInt();
       
       if (timestamp > 1000000000UL) {
-        tiempoUnixBase = timestamp;
+        // 🔥 CORRECCIÓN: Verificar si es timestamp en segundos o milisegundos
+        if (timestamp < 2000000000UL) {
+          // Convertir de segundos a milisegundos
+          tiempoUnixBase = timestamp * 1000UL;
+          Serial.println("✅ Timestamp convertido de segundos a milisegundos");
+        } else {
+          // Ya está en milisegundos
+          tiempoUnixBase = timestamp;
+          Serial.println("✅ Timestamp ya en milisegundos");
+        }
         millisInicioUnix = millis();
         timestampSincronizado = true;
-        Serial.println("Tiempo sincronizado correctamente");
+        Serial.print("✅ Tiempo sincronizado: ");
+        Serial.println(tiempoUnixBase);
         return;
       }
     }
   }
   
-  tiempoUnixBase = 1735689600000UL;
+  // 🔥 Fallback: usar timestamp actual en SEGUNDOS (2025-01-22)
+  tiempoUnixBase = 1737504000UL; // 2025-01-22 en segundos
   millisInicioUnix = millis();
   timestampSincronizado = true;
-  Serial.println("Usando tiempo estimado");
+  Serial.print("⚠️ Usando tiempo estimado en segundos: ");
+  Serial.println(tiempoUnixBase);
+}
+
+// FUNCION: Debug de timestamp (CORREGIDO)
+void debugTimestamp() {
+  unsigned long ts = getTimestampUnix();
+  Serial.println("=== DEBUG TIMESTAMP ===");
+  Serial.print("Timestamp generado: ");
+  Serial.println(ts);
+  Serial.print("Fecha equivalente: ");
+  Serial.print("2025-01-22 + ");
+  Serial.print(millis() / 1000);
+  Serial.println(" segundos");
+  Serial.println("======================");
 }
 
 // NUEVA FUNCION: Watchdog WiFi con reconexion automatica
@@ -402,6 +426,9 @@ void enviarDatosFirebase() {
  if (statusCode == 200) {
   Serial.println("✅ Firebase: Datos enviados OK");
   Serial.print("   Timestamp: "); Serial.println(timestampUnix);
+  Serial.print("   Fecha: "); Serial.print("2025-01-22 + ");
+  Serial.print(millis() / 1000);
+  Serial.println(" segundos");
   Serial.print("   S1: "); Serial.print((int)ema);
   Serial.print(" | S2: "); Serial.println((int)ema2);
 } else if (statusCode == 401) {
@@ -452,6 +479,9 @@ void setup() {
     Serial.println(" dBm");
     Serial.println();
     sincronizarTiempo();
+    
+    // Debug del timestamp
+    debugTimestamp();
   } else {
     Serial.println("\nError al conectar WiFi (continuando sin conexion)");
   }

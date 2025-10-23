@@ -17,6 +17,10 @@ function SimulacionPanel({ onClose, configuracion, ultimaLectura }) {
   // Estado de escenario activo
   const [escenarioActivo, setEscenarioActivo] = useState(null);
 
+  // 🆕 Estados para feedback visual
+  const [enviando, setEnviando] = useState(false);
+  const [mensajeExito, setMensajeExito] = useState('');
+
   // Inicializar con valores actuales
   useEffect(() => {
     if (ultimaLectura) {
@@ -25,286 +29,18 @@ function SimulacionPanel({ onClose, configuracion, ultimaLectura }) {
     }
   }, [ultimaLectura]);
 
-  // 🔥 CORREGIDO: Auto-incremento CON auto-envío
-  useEffect(() => {
-    if (!autoIncremento) return;
-
-    const interval = setInterval(() => {
-      setValorSensor1(prev => {
-        const nuevoValor = Math.min(prev + 5, 200);
-        return nuevoValor;
-      });
-      setValorSensor2(prev => {
-        const nuevoValor = Math.min(prev + 5, 200);
-        return nuevoValor;
-      });
-
-      // 🔥 NUEVO: Enviar automáticamente cuando está en auto-incremento
-      enviarValoresSimuladosDirecto();
-    }, 2000); // Cada 2 segundos
-
-    return () => clearInterval(interval);
-  }, [autoIncremento, valorSensor1, valorSensor2, configuracion, forzarAlertaPiso1, forzarAlertaPiso2]);
-
   // ============================================
   // FUNCIONES DE SIMULACIÓN
   // ============================================
 
-  // 🔥 NUEVO: Función auxiliar para enviar sin dependencias
-  const enviarValoresSimuladosDirecto = async () => {
+  // Función para enviar datos directamente (usada por escenarios)
+  const enviarDatosDirecto = async (valor1, valor2, alertaPiso1, alertaPiso2) => {
     try {
       const timestamp = Date.now();
       const lecturaRef = ref(db, `lecturas/${timestamp}`);
 
-      const alerta1 = valorSensor1 > configuracion.umbralGas;
-      const alerta2 = valorSensor2 > configuracion.umbralGas;
-
-      const datos = {
-        valorSensor1: valorSensor1,
-        valorSensor2: valorSensor2,
-        sensor1Alerta: forzarAlertaPiso1 || alerta1,
-        sensor2Alerta: forzarAlertaPiso2 || alerta2,
-        dispositivo: 'simulacion_web',
-        timestamp: timestamp,
-        modoSimulacion: true
-      };
-
-      await set(lecturaRef, datos);
-
-      console.log(`📤 Enviado ->`, {
-        P1: valorSensor1,
-        P2: valorSensor2,
-        alerta1,
-        alerta2,
-        umbral: configuracion.umbralGas
-      });
-
-      // 🔥 NUEVO: Enviar notificación si hay alerta
-      if (alerta1 || alerta2) {
-        const notifRef = push(ref(db, 'notificaciones'));
-        await set(notifRef, {
-          tipo: 'alerta',
-          mensaje: `Simulación: Gas detectado en ${alerta1 ? 'Piso 1' : ''} ${alerta2 ? 'Piso 2' : ''}`,
-          timestamp: timestamp,
-          leido: false,
-          simulacion: true
-        });
-      }
-    } catch (error) {
-      console.error('❌ Error:', error);
-    }
-  };
-
-
-  // Enviar valores simulados a Firebase Realtime Database
-  const enviarValoresSimulados = async () => {
-    try {
-      const alerta1 = valorSensor1 > configuracion.umbralGas;
-      const alerta2 = valorSensor2 > configuracion.umbralGas;
-
-      // Crear referencia con timestamp como ID
-      const timestamp = Date.now();
-      const lecturaRef = ref(db, `lecturas/${timestamp}`);
-
-      await set(lecturaRef, {
-        valorSensor1: valorSensor1,
-        valorSensor2: valorSensor2,
-        sensor1Alerta: forzarAlertaPiso1 || alerta1,
-        sensor2Alerta: forzarAlertaPiso2 || alerta2,
-        dispositivo: 'simulacion_web',
-        timestamp: timestamp,
-        modoSimulacion: true
-      });
-
-      // Notificación si hay alerta
-      if (forzarAlertaPiso1 || alerta1 || forzarAlertaPiso2 || alerta2) {
-        let mensaje = 'Simulación: Gas detectado en ';
-        if (forzarAlertaPiso1 || alerta1) mensaje += 'Piso 1 ';
-        if (forzarAlertaPiso2 || alerta2) mensaje += 'Piso 2';
-
-        const notifRef = push(ref(db, 'notificaciones'));
-        await set(notifRef, {
-          tipo: 'alerta',
-          mensaje: mensaje,
-          timestamp: timestamp,
-          leido: false,
-          simulacion: true
-        });
-      }
-
-      console.log('✅ Valores simulados enviados manualmente');
-      console.log(`📊 Sensor 1: ${valorSensor1} | Sensor 2: ${valorSensor2}`);
-      console.log(`🚨 Alerta P1: ${alerta1} | Alerta P2: ${alerta2}`);
-    } catch (error) {
-      console.error('❌ Error al enviar simulación:', error);
-    }
-  };
-
-  // Resetear valores
-  const resetearValores = () => {
-    setValorSensor1(0);
-    setValorSensor2(0);
-    setForzarAlertaPiso1(false);
-    setForzarAlertaPiso2(false);
-    setAutoIncremento(false);
-    setEscenarioActivo(null);
-    console.log('🔄 Valores reseteados');
-  };
-
-  // Activar alerta específica de piso
-  const activarAlertaPiso = async (piso) => {
-    if (piso === 1) {
-      const nuevoValor = configuracion.umbralGas + 20;
-      setValorSensor1(nuevoValor);
-      setForzarAlertaPiso1(true);
-      console.log(`🔴 Activando alerta Piso 1 con valor: ${nuevoValor}`);
-
-      setTimeout(() => {
-        setForzarAlertaPiso1(false);
-      }, 3000);
-    } else {
-      const nuevoValor = configuracion.umbralGas + 20;
-      setValorSensor2(nuevoValor);
-      setForzarAlertaPiso2(true);
-      console.log(`🔴 Activando alerta Piso 2 con valor: ${nuevoValor}`);
-
-      setTimeout(() => {
-        setForzarAlertaPiso2(false);
-      }, 3000);
-    }
-
-    // Esperar un poco para que se actualicen los estados
-    setTimeout(() => {
-      enviarValoresSimulados();
-    }, 100);
-  };
-
-  // ============================================
-  // ESCENARIOS PREDEFINIDOS
-  // ============================================
-
-  // Reemplazar TODOS los escenarios con esta versión corregida:
-
-  const escenarios = {
-    fugaLeve: {
-      nombre: 'Fuga Leve',
-      icono: '💨',
-      descripcion: 'Incremento gradual en ambos pisos',
-      ejecutar: async () => {
-        console.log('💨 Ejecutando escenario: Fuga Leve');
-        setEscenarioActivo('fugaLeve');
-
-        // 🔥 IMPORTANTE: Actualizar estados y enviar inmediatamente
-        const nuevoValor1 = 30;
-        const nuevoValor2 = 25;
-        setValorSensor1(nuevoValor1);
-        setValorSensor2(nuevoValor2);
-
-        // Enviar manualmente con los nuevos valores
-        await enviarDatosDirecto(nuevoValor1, nuevoValor2, false, false);
-
-        // Activar auto-incremento DESPUÉS del envío inicial
-        setAutoIncremento(true);
-      }
-    },
-    fugaSevera: {
-      nombre: 'Fuga Severa',
-      icono: '⚠️',
-      descripcion: 'Alerta inmediata en Piso 1',
-      ejecutar: async () => {
-        console.log('⚠️ Ejecutando escenario: Fuga Severa');
-        setEscenarioActivo('fugaSevera');
-
-        const nuevoValor1 = configuracion.umbralGas + 50;
-        const nuevoValor2 = 40;
-        setValorSensor1(nuevoValor1);
-        setValorSensor2(nuevoValor2);
-        setForzarAlertaPiso1(true);
-
-        // Enviar con alerta forzada
-        await enviarDatosDirecto(nuevoValor1, nuevoValor2, true, false);
-
-        setTimeout(() => {
-          setForzarAlertaPiso1(false);
-        }, 5000);
-      }
-    },
-    emergenciaTotal: {
-      nombre: 'Emergencia Total',
-      icono: '🚨',
-      descripcion: 'Ambos pisos en alerta crítica',
-      ejecutar: async () => {
-        console.log('🚨 Ejecutando escenario: Emergencia Total');
-        setEscenarioActivo('emergenciaTotal');
-
-        const nuevoValor1 = configuracion.umbralGas + 80;
-        const nuevoValor2 = configuracion.umbralGas + 75;
-        setValorSensor1(nuevoValor1);
-        setValorSensor2(nuevoValor2);
-        setForzarAlertaPiso1(true);
-        setForzarAlertaPiso2(true);
-
-        // Enviar con ambas alertas forzadas
-        await enviarDatosDirecto(nuevoValor1, nuevoValor2, true, true);
-
-        // Notificación de emergencia
-        const notifRef = push(ref(db, 'notificaciones'));
-        await set(notifRef, {
-          tipo: 'alerta',
-          mensaje: '🚨 EMERGENCIA TOTAL - Evacuación inmediata del edificio',
-          timestamp: Date.now(),
-          leido: false,
-          simulacion: true
-        });
-
-        setTimeout(() => {
-          setForzarAlertaPiso1(false);
-          setForzarAlertaPiso2(false);
-        }, 8000);
-      }
-    },
-    pruebaActuadores: {
-      nombre: 'Prueba de Actuadores',
-      icono: '🔧',
-      descripcion: 'Activa buzzers, LEDs y puerta',
-      ejecutar: async () => {
-        console.log('🔧 Ejecutando escenario: Prueba de Actuadores');
-        setEscenarioActivo('pruebaActuadores');
-
-        // Activar todo gradualmente
-        const configRef = ref(db, 'configuracion/sistema');
-        await update(configRef, {
-          buzzerPiso1Activo: true,
-          buzzerPiso2Activo: true,
-          ledPiso1Activo: true,
-          ledPiso2Activo: true
-        });
-
-        // Valores moderados para activar alertas
-        const nuevoValor1 = configuracion.umbralGas + 10;
-        const nuevoValor2 = configuracion.umbralGas + 10;
-        setValorSensor1(nuevoValor1);
-        setValorSensor2(nuevoValor2);
-
-        await enviarDatosDirecto(nuevoValor1, nuevoValor2, false, false);
-
-        // Abrir puerta después de 2 segundos
-        setTimeout(async () => {
-          await update(configRef, {
-            servoAbierto: true
-          });
-        }, 2000);
-      }
-    }
-  };
-  // 🔥 NUEVA FUNCIÓN: Enviar datos directamente sin depender de estados
-  const enviarDatosDirecto = async (valor1, valor2, forzarP1, forzarP2) => {
-    try {
-      const timestamp = Date.now();
-      const lecturaRef = ref(db, `lecturas/${timestamp}`);
-
-      const alerta1 = valor1 > configuracion.umbralGas || forzarP1;
-      const alerta2 = valor2 > configuracion.umbralGas || forzarP2;
+      const alerta1 = alertaPiso1 || valor1 > configuracion.umbralGas;
+      const alerta2 = alertaPiso2 || valor2 > configuracion.umbralGas;
 
       const datos = {
         valorSensor1: valor1,
@@ -318,7 +54,7 @@ function SimulacionPanel({ onClose, configuracion, ultimaLectura }) {
 
       await set(lecturaRef, datos);
 
-      console.log(`📤 Enviado directamente:`, {
+      console.log(`📤 Datos enviados ->`, {
         P1: valor1,
         P2: valor2,
         alerta1,
@@ -331,25 +67,322 @@ function SimulacionPanel({ onClose, configuracion, ultimaLectura }) {
         const notifRef = push(ref(db, 'notificaciones'));
         await set(notifRef, {
           tipo: 'alerta',
-          mensaje: `Simulación: Gas detectado en ${alerta1 ? 'Piso 1' : ''} ${alerta1 && alerta2 ? 'y' : ''} ${alerta2 ? 'Piso 2' : ''}`,
+          mensaje: `Simulación: Gas detectado en ${alerta1 ? 'Piso 1' : ''} ${alerta2 ? 'Piso 2' : ''}`,
           timestamp: timestamp,
           leido: false,
           simulacion: true
         });
       }
+
+      return true;
     } catch (error) {
       console.error('❌ Error al enviar datos:', error);
+      throw error;
+    }
+  };
+
+  // Auto-incremento CON auto-envío en tiempo real
+  useEffect(() => {
+    if (!autoIncremento) return;
+
+    const interval = setInterval(() => {
+      setValorSensor1(prev => {
+        const nuevoValor = Math.min(prev + 5, 200);
+        return nuevoValor;
+      });
+      setValorSensor2(prev => {
+        const nuevoValor = Math.min(prev + 5, 200);
+        return nuevoValor;
+      });
+    }, 2000); // Cada 2 segundos actualiza los valores
+
+    return () => clearInterval(interval);
+  }, [autoIncremento]);
+
+  // Efecto separado para enviar los datos cuando cambian los valores en modo auto-incremento
+  useEffect(() => {
+    if (!autoIncremento) return;
+
+    const enviarDatos = async () => {
+      try {
+        await enviarDatosDirecto(
+          valorSensor1, 
+          valorSensor2, 
+          forzarAlertaPiso1, 
+          forzarAlertaPiso2
+        );
+      } catch (error) {
+        console.error('Error en auto-envío:', error);
+      }
+    };
+
+    // Pequeño delay para asegurar que los estados se actualizaron
+    const timeout = setTimeout(() => {
+      enviarDatos();
+    }, 100);
+
+    return () => clearTimeout(timeout);
+  }, [valorSensor1, valorSensor2]);
+
+  // 🆕 Mostrar mensaje de éxito temporal
+  const mostrarMensajeExito = (mensaje) => {
+    setMensajeExito(mensaje);
+    setTimeout(() => {
+      setMensajeExito('');
+    }, 3000);
+  };
+
+  // Enviar valores simulados manualmente
+  const enviarValoresSimulados = async () => {
+    if (enviando) return; // Evitar doble clic
+
+    try {
+      setEnviando(true);
+      console.log('📤 Enviando valores manualmente...');
+      console.log('Valores actuales:', { valorSensor1, valorSensor2 });
+      
+      await enviarDatosDirecto(
+        valorSensor1,
+        valorSensor2,
+        forzarAlertaPiso1,
+        forzarAlertaPiso2
+      );
+
+      console.log('✅ Valores enviados correctamente');
+      mostrarMensajeExito('✅ Valores enviados exitosamente');
+    } catch (error) {
+      console.error('❌ Error al enviar valores:', error);
+      mostrarMensajeExito('❌ Error al enviar valores');
+    } finally {
+      setEnviando(false);
+    }
+  };
+
+  // Resetear valores
+  const resetearValores = async () => {
+    if (enviando) return; // Evitar doble clic
+
+    try {
+      setEnviando(true);
+      console.log('🔄 Reseteando valores...');
+      
+      // Detener auto-incremento primero
+      setAutoIncremento(false);
+      
+      // Resetear estados
+      setValorSensor1(0);
+      setValorSensor2(0);
+      setForzarAlertaPiso1(false);
+      setForzarAlertaPiso2(false);
+      setEscenarioActivo(null);
+
+      // Esperar un momento para que los estados se actualicen
+      await new Promise(resolve => setTimeout(resolve, 100));
+
+      // Enviar valores reseteados a Firebase
+      await enviarDatosDirecto(0, 0, false, false);
+
+      console.log('✅ Valores reseteados y enviados a Firebase');
+      mostrarMensajeExito('✅ Sistema reseteado correctamente');
+    } catch (error) {
+      console.error('❌ Error al resetear valores:', error);
+      mostrarMensajeExito('❌ Error al resetear valores');
+    } finally {
+      setEnviando(false);
+    }
+  };
+
+  // Activar alerta específica de piso
+  const activarAlertaPiso = async (piso) => {
+    if (enviando) return;
+
+    try {
+      setEnviando(true);
+
+      if (piso === 1) {
+        const nuevoValor = configuracion.umbralGas + 20;
+        setValorSensor1(nuevoValor);
+        setForzarAlertaPiso1(true);
+        console.log(`🔴 Activando alerta Piso 1 con valor: ${nuevoValor}`);
+
+        // Enviar inmediatamente
+        await new Promise(resolve => setTimeout(resolve, 100));
+        await enviarDatosDirecto(nuevoValor, valorSensor2, true, forzarAlertaPiso2);
+
+        setTimeout(() => {
+          setForzarAlertaPiso1(false);
+        }, 3000);
+      } else {
+        const nuevoValor = configuracion.umbralGas + 20;
+        setValorSensor2(nuevoValor);
+        setForzarAlertaPiso2(true);
+        console.log(`🔴 Activando alerta Piso 2 con valor: ${nuevoValor}`);
+
+        // Enviar inmediatamente
+        await new Promise(resolve => setTimeout(resolve, 100));
+        await enviarDatosDirecto(valorSensor1, nuevoValor, forzarAlertaPiso1, true);
+
+        setTimeout(() => {
+          setForzarAlertaPiso2(false);
+        }, 3000);
+      }
+
+      mostrarMensajeExito(`✅ Alerta Piso ${piso} activada`);
+    } catch (error) {
+      console.error('Error al activar alerta:', error);
+      mostrarMensajeExito('❌ Error al activar alerta');
+    } finally {
+      setEnviando(false);
     }
   };
 
   // ============================================
-  // RENDER
+  // ESCENARIOS PREDEFINIDOS
   // ============================================
+
+  const escenarios = {
+    fugaLeve: {
+      nombre: 'Fuga Leve',
+      icono: '💨',
+      descripcion: 'Incremento gradual en ambos pisos',
+      ejecutar: async () => {
+        if (enviando) return;
+
+        try {
+          setEnviando(true);
+          console.log('💨 Ejecutando escenario: Fuga Leve');
+          setEscenarioActivo('fugaLeve');
+
+          const nuevoValor1 = 30;
+          const nuevoValor2 = 25;
+          setValorSensor1(nuevoValor1);
+          setValorSensor2(nuevoValor2);
+
+          // Enviar manualmente con los nuevos valores
+          await new Promise(resolve => setTimeout(resolve, 100));
+          await enviarDatosDirecto(nuevoValor1, nuevoValor2, false, false);
+
+          // Activar auto-incremento DESPUÉS del envío inicial
+          setTimeout(() => {
+            setAutoIncremento(true);
+          }, 200);
+
+          mostrarMensajeExito('✅ Escenario "Fuga Leve" activado');
+        } catch (error) {
+          console.error('Error en escenario:', error);
+          mostrarMensajeExito('❌ Error al activar escenario');
+        } finally {
+          setEnviando(false);
+        }
+      }
+    },
+    fugaSevera: {
+      nombre: 'Fuga Severa',
+      icono: '⚠️',
+      descripcion: 'Alerta inmediata en Piso 1',
+      ejecutar: async () => {
+        if (enviando) return;
+
+        try {
+          setEnviando(true);
+          console.log('⚠️ Ejecutando escenario: Fuga Severa');
+          setEscenarioActivo('fugaSevera');
+
+          const nuevoValor1 = configuracion.umbralGas + 50;
+          const nuevoValor2 = 40;
+          setValorSensor1(nuevoValor1);
+          setValorSensor2(nuevoValor2);
+          setForzarAlertaPiso1(true);
+
+          await new Promise(resolve => setTimeout(resolve, 100));
+          await enviarDatosDirecto(nuevoValor1, nuevoValor2, true, false);
+
+          setTimeout(() => {
+            setForzarAlertaPiso1(false);
+          }, 3000);
+
+          mostrarMensajeExito('✅ Escenario "Fuga Severa" activado');
+        } catch (error) {
+          console.error('Error en escenario:', error);
+          mostrarMensajeExito('❌ Error al activar escenario');
+        } finally {
+          setEnviando(false);
+        }
+      }
+    },
+    evacuacion: {
+      nombre: 'Evacuación',
+      icono: '🚨',
+      descripcion: 'Alerta crítica en ambos pisos',
+      ejecutar: async () => {
+        if (enviando) return;
+
+        try {
+          setEnviando(true);
+          console.log('🚨 Ejecutando escenario: Evacuación');
+          setEscenarioActivo('evacuacion');
+
+          const nuevoValor1 = configuracion.umbralGas + 80;
+          const nuevoValor2 = configuracion.umbralGas + 70;
+          setValorSensor1(nuevoValor1);
+          setValorSensor2(nuevoValor2);
+          setForzarAlertaPiso1(true);
+          setForzarAlertaPiso2(true);
+
+          await new Promise(resolve => setTimeout(resolve, 100));
+          await enviarDatosDirecto(nuevoValor1, nuevoValor2, true, true);
+
+          setTimeout(() => {
+            setForzarAlertaPiso1(false);
+            setForzarAlertaPiso2(false);
+          }, 5000);
+
+          mostrarMensajeExito('✅ Escenario "Evacuación" activado');
+        } catch (error) {
+          console.error('Error en escenario:', error);
+          mostrarMensajeExito('❌ Error al activar escenario');
+        } finally {
+          setEnviando(false);
+        }
+      }
+    },
+    normal: {
+      nombre: 'Estado Normal',
+      icono: '✅',
+      descripcion: 'Valores seguros, sin alertas',
+      ejecutar: async () => {
+        if (enviando) return;
+
+        try {
+          setEnviando(true);
+          console.log('✅ Ejecutando escenario: Normal');
+          setEscenarioActivo('normal');
+
+          const nuevoValor1 = 15;
+          const nuevoValor2 = 12;
+          setValorSensor1(nuevoValor1);
+          setValorSensor2(nuevoValor2);
+          setForzarAlertaPiso1(false);
+          setForzarAlertaPiso2(false);
+          setAutoIncremento(false);
+
+          await new Promise(resolve => setTimeout(resolve, 100));
+          await enviarDatosDirecto(nuevoValor1, nuevoValor2, false, false);
+
+          mostrarMensajeExito('✅ Escenario "Normal" activado');
+        } catch (error) {
+          console.error('Error en escenario:', error);
+          mostrarMensajeExito('❌ Error al activar escenario');
+        } finally {
+          setEnviando(false);
+        }
+      }
+    }
+  };
 
   return (
     <div className="simulacion-overlay">
       <div className="simulacion-panel">
-        {/* Header */}
         <div className="sim-header">
           <div className="sim-header-left">
             <Play className="sim-icon-main" size={32} />
@@ -363,11 +396,18 @@ function SimulacionPanel({ onClose, configuracion, ultimaLectura }) {
             onClick={onClose}
             title="Cerrar"
           >
-            ✕
+            <XCircle size={24} />
           </button>
         </div>
 
         <div className="sim-content">
+          {/* 🆕 Mensaje de éxito/error */}
+          {mensajeExito && (
+            <div className={`mensaje-feedback ${mensajeExito.includes('❌') ? 'error' : 'exito'}`}>
+              {mensajeExito}
+            </div>
+          )}
+
           {/* Control Manual de Sensores */}
           <div className="sim-section">
             <div className="sim-section-header">
@@ -379,7 +419,9 @@ function SimulacionPanel({ onClose, configuracion, ultimaLectura }) {
             <div className="sim-sensor-control">
               <div className="sim-sensor-header">
                 <span className="sim-sensor-label">📡 Sensor Piso 1 (A0)</span>
-                <span className="sim-sensor-value">{valorSensor1}</span>
+                <span className={`sim-sensor-value ${valorSensor1 > configuracion.umbralGas ? 'alerta-rojo' : ''}`}>
+                  {valorSensor1}
+                </span>
               </div>
               <input
                 type="range"
@@ -388,7 +430,7 @@ function SimulacionPanel({ onClose, configuracion, ultimaLectura }) {
                 value={valorSensor1}
                 onChange={(e) => setValorSensor1(parseInt(e.target.value))}
                 className="sim-slider"
-                disabled={autoIncremento}
+                disabled={autoIncremento || enviando}
               />
               <div className="sim-sensor-indicators">
                 <span>0</span>
@@ -401,7 +443,9 @@ function SimulacionPanel({ onClose, configuracion, ultimaLectura }) {
             <div className="sim-sensor-control">
               <div className="sim-sensor-header">
                 <span className="sim-sensor-label">📡 Sensor Piso 2 (A3)</span>
-                <span className="sim-sensor-value">{valorSensor2}</span>
+                <span className={`sim-sensor-value ${valorSensor2 > configuracion.umbralGas ? 'alerta-rojo' : ''}`}>
+                  {valorSensor2}
+                </span>
               </div>
               <input
                 type="range"
@@ -410,7 +454,7 @@ function SimulacionPanel({ onClose, configuracion, ultimaLectura }) {
                 value={valorSensor2}
                 onChange={(e) => setValorSensor2(parseInt(e.target.value))}
                 className="sim-slider"
-                disabled={autoIncremento}
+                disabled={autoIncremento || enviando}
               />
               <div className="sim-sensor-indicators">
                 <span>0</span>
@@ -419,7 +463,7 @@ function SimulacionPanel({ onClose, configuracion, ultimaLectura }) {
               </div>
             </div>
 
-            {/* 🔥 NUEVO: Información de estado actual */}
+            {/* Información de estado actual */}
             <div className="sim-info-box">
               <p><strong>Estado actual:</strong></p>
               <p>
@@ -440,6 +484,7 @@ function SimulacionPanel({ onClose, configuracion, ultimaLectura }) {
               <button
                 className={`sim-btn sim-btn-primary ${autoIncremento ? 'active' : ''}`}
                 onClick={() => setAutoIncremento(!autoIncremento)}
+                disabled={enviando}
               >
                 <Zap size={20} />
                 {autoIncremento ? 'Detener Auto-Incremento' : 'Auto-Incremento'}
@@ -448,18 +493,19 @@ function SimulacionPanel({ onClose, configuracion, ultimaLectura }) {
               <button
                 className="sim-btn sim-btn-success"
                 onClick={enviarValoresSimulados}
-                disabled={autoIncremento}
+                disabled={autoIncremento || enviando}
               >
                 <Play size={20} />
-                Enviar Valores
+                {enviando ? 'Enviando...' : 'Enviar Valores'}
               </button>
 
               <button
                 className="sim-btn sim-btn-danger"
                 onClick={resetearValores}
+                disabled={enviando}
               >
                 <RotateCcw size={20} />
-                Resetear
+                {enviando ? 'Reseteando...' : 'Resetear'}
               </button>
             </div>
           </div>
@@ -475,6 +521,7 @@ function SimulacionPanel({ onClose, configuracion, ultimaLectura }) {
               <button
                 className="sim-alert-btn piso1"
                 onClick={() => activarAlertaPiso(1)}
+                disabled={enviando}
               >
                 <Volume2 size={24} />
                 <span>Activar Alerta Piso 1</span>
@@ -484,6 +531,7 @@ function SimulacionPanel({ onClose, configuracion, ultimaLectura }) {
               <button
                 className="sim-alert-btn piso2"
                 onClick={() => activarAlertaPiso(2)}
+                disabled={enviando}
               >
                 <Lightbulb size={24} />
                 <span>Activar Alerta Piso 2</span>
@@ -505,6 +553,7 @@ function SimulacionPanel({ onClose, configuracion, ultimaLectura }) {
                   key={key}
                   className={`sim-scenario-card ${escenarioActivo === key ? 'active' : ''}`}
                   onClick={escenario.ejecutar}
+                  disabled={enviando}
                 >
                   <div className="scenario-icon">{escenario.icono}</div>
                   <h4>{escenario.nombre}</h4>

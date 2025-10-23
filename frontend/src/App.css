@@ -1,4 +1,440 @@
 /* ============================================
+   ESTILOS PARA CARD DE ESTADO DE CONEXIÓN SIMPLIFICADA
+   ============================================ */
+.connection-status-card {
+  background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+  border: 2px solid #4facfe;
+  border-radius: 16px;
+  padding: 24px;
+  margin: 20px 0;
+  box-shadow: 0 8px 32px rgba(79, 172, 254, 0.2);
+  transition: all 0.3s ease;
+}
+
+.connection-status-card.conectado {
+  border-color: #10b981;
+  box-shadow: 0 8px 32px rgba(16, 185, 129, 0.2);
+}
+
+.connection-status-card.desconectado {
+  border-color: #ef4444;
+  box-shadow: 0 8px 32px rgba(239, 68, 68, 0.2);
+}
+
+.status-header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.status-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 60px;
+  height: 60px;
+  border-radius: 50%;
+  background: rgba(79, 172, 254, 0.1);
+}
+
+.icono-conectado {
+  color: #10b981;
+}
+
+.icono-desconectado {
+  color: #ef4444;
+}
+
+.status-title h3 {
+  font-size: 24px;
+  font-weight: 700;
+  color: #ffffff;
+  margin: 0 0 8px 0;
+}
+
+.status-subtitle {
+  font-size: 16px;
+  color: #94a3b8;
+  margin: 0;
+}
+
+.status-details {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.status-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 16px;
+}
+
+.status-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 16px;
+  background: rgba(79, 172, 254, 0.05);
+  border-radius: 8px;
+  border: 1px solid rgba(79, 172, 254, 0.1);
+}
+
+.status-label {
+  font-size: 14px;
+  color: #94a3b8;
+  font-weight: 500;
+}
+
+.status-value {
+  font-size: 16px;
+  font-weight: 600;
+  color: #ffffff;
+}
+
+.status-value.excelente {
+  color: #10b981;
+}
+
+.status-value.buena {
+  color: #f59e0b;
+}
+
+.status-value.regular {
+  color: #f97316;
+}
+
+.status-value.mala {
+  color: #ef4444;
+}
+
+.status-value.success {
+  color: #10b981;
+}
+
+.status-value.warning {
+  color: #f59e0b;
+}
+
+.status-value.danger {
+  color: #ef4444;
+}
+
+.sensor-readings {
+  background: rgba(79, 172, 254, 0.05);
+  border-radius: 12px;
+  padding: 20px;
+  border: 1px solid rgba(79, 172, 254, 0.1);
+}
+
+.sensor-readings h4 {
+  font-size: 18px;
+  font-weight: 600;
+  color: #ffffff;
+  margin: 0 0 16px 0;
+}
+
+.sensor-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 16px;
+}
+
+.sensor-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 16px;
+  background: rgba(79, 172, 254, 0.1);
+  border-radius: 8px;
+}
+
+.sensor-label {
+  font-size: 14px;
+  color: #94a3b8;
+  font-weight: 500;
+}
+
+.sensor-value {
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.sensor-value.normal {
+  color: #10b981;
+}
+
+.sensor-value.alerta {
+  color: #ef4444;
+}
+
+.connection-warning {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 20px;
+  background: rgba(239, 68, 68, 0.1);
+  border: 2px solid #ef4444;
+  border-radius: 12px;
+  color: #ef4444;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+/* ============================================
+   ESTILOS PARA ESTADO DE CALIBRACIÓN ARDUINO
+   ============================================ */
+.estado-calibracion {
+  background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+  border: 2px solid #4facfe;
+  border-radius: 12px;
+  padding: 16px;
+  margin: 16px 0;
+  box-shadow: 0 4px 20px rgba(79, 172, 254, 0.2);
+  transition: all 0.3s ease;
+}
+
+.estado-calibracion.calibrando {
+  border-color: #f59e0b;
+  box-shadow: 0 4px 20px rgba(245, 158, 11, 0.2);
+}
+
+.estado-calibracion.operativo {
+  border-color: #10b981;
+  box-shadow: 0 4px 20px rgba(16, 185, 129, 0.2);
+}
+
+.calibracion-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.icono-calibrando {
+  color: #f59e0b;
+  animation: pulse 2s infinite;
+}
+
+.icono-operativo {
+  color: #10b981;
+}
+
+.icono-desconocido {
+  color: #ef4444;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+.calibracion-titulo {
+  font-weight: 600;
+  font-size: 16px;
+  color: #ffffff;
+}
+
+.calibracion-progreso {
+  margin: 12px 0;
+}
+
+.progreso-bar {
+  width: 100%;
+  height: 8px;
+  background: rgba(79, 172, 254, 0.2);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.progreso-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #f59e0b, #10b981);
+  transition: width 0.3s ease;
+}
+
+.progreso-texto {
+  display: block;
+  text-align: center;
+  margin-top: 8px;
+  font-size: 14px;
+  color: #e5e7eb;
+}
+
+.calibracion-detalles {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.calibracion-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  color: #e5e7eb;
+}
+
+.calibracion-alerta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  padding: 8px 12px;
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid #ef4444;
+  border-radius: 6px;
+  color: #ef4444;
+  font-size: 14px;
+}
+
+.calibracion-exito {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  padding: 8px 12px;
+  background: rgba(16, 185, 129, 0.1);
+  border: 1px solid #10b981;
+  border-radius: 6px;
+  color: #10b981;
+  font-size: 14px;
+}
+
+/* ============================================
+   ESTILOS PARA INDICADOR DE CONEXIÓN TIEMPO REAL
+   ============================================ */
+.indicador-conexion-tiempo-real {
+  background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+  border: 2px solid #4facfe;
+  border-radius: 12px;
+  padding: 16px;
+  margin: 16px 0;
+  box-shadow: 0 4px 20px rgba(79, 172, 254, 0.2);
+  transition: all 0.3s ease;
+}
+
+.indicador-conexion-tiempo-real.conectado {
+  border-color: #10b981;
+  box-shadow: 0 4px 20px rgba(16, 185, 129, 0.2);
+}
+
+.indicador-conexion-tiempo-real.desconectado {
+  border-color: #ef4444;
+  box-shadow: 0 4px 20px rgba(239, 68, 68, 0.2);
+}
+
+.indicador-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.indicador-icono.conectado {
+  color: #10b981;
+}
+
+.indicador-icono.desconectado {
+  color: #ef4444;
+}
+
+.indicador-titulo {
+  font-weight: 600;
+  font-size: 16px;
+  color: #ffffff;
+}
+
+.indicador-detalles {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.indicador-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  color: #e5e7eb;
+}
+
+.calidad-badge {
+  padding: 4px 8px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.calidad-badge.excelente {
+  background: #10b981;
+  color: white;
+}
+
+.calidad-badge.buena {
+  background: #f59e0b;
+  color: white;
+}
+
+.calidad-badge.regular {
+  background: #f97316;
+  color: white;
+}
+
+.calidad-badge.mala {
+  background: #ef4444;
+  color: white;
+}
+
+.indicador-sensores {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-top: 8px;
+  padding: 12px;
+  background: rgba(79, 172, 254, 0.1);
+  border-radius: 8px;
+}
+
+.sensor-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.sensor-label {
+  font-size: 14px;
+  color: #9ca3af;
+}
+
+.sensor-valor {
+  font-weight: 600;
+  font-size: 16px;
+}
+
+.sensor-valor.normal {
+  color: #10b981;
+}
+
+.sensor-valor.alerta {
+  color: #ef4444;
+}
+
+.indicador-alerta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  padding: 8px 12px;
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid #ef4444;
+  border-radius: 6px;
+  color: #ef4444;
+  font-size: 14px;
+}
+
+/* ============================================
    VARIABLES GLOBALES Y RESET
    ============================================ */
 :root {
@@ -98,9 +534,11 @@ body {
 }
 
 .header-right {
-  display: flex;
+  display: flex !important;
   align-items: center;
   gap: 1rem;
+  visibility: visible !important;
+  opacity: 1 !important;
 }
 
 /* ============================================
@@ -1037,4 +1475,157 @@ tr.alerta-row {
 
 ::-webkit-scrollbar-thumb:hover {
   background: linear-gradient(135deg, var(--secondary-color), #ec4899);
+}
+
+/* ============================================
+   ESTILOS PARA HEADER Y BOTONES DE CONTROL
+   ============================================ */
+.header {
+  background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+  border-bottom: 2px solid #4facfe;
+  padding: 1rem 2rem;
+  box-shadow: 0 4px 20px rgba(79, 172, 254, 0.2);
+}
+
+.header-content {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.logo-icon {
+  color: #4facfe;
+}
+
+.header h1 {
+  font-size: 1.8rem;
+  font-weight: 700;
+  color: #ffffff;
+  margin: 0;
+}
+
+.subtitle {
+  font-size: 0.9rem;
+  color: #94a3b8;
+  margin: 0;
+}
+
+.header-right {
+  display: flex !important;
+  align-items: center;
+  gap: 1rem;
+  visibility: visible !important;
+  opacity: 1 !important;
+}
+
+.status-indicator {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 1rem;
+  border-radius: 8px;
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.status-indicator.connected {
+  background: rgba(16, 185, 129, 0.1);
+  color: #10b981;
+  border: 1px solid #10b981;
+}
+
+.status-indicator.disconnected {
+  background: rgba(239, 68, 68, 0.1);
+  color: #ef4444;
+  border: 1px solid #ef4444;
+}
+
+.icon-button {
+  display: flex !important;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 48px;
+  background: rgba(79, 172, 254, 0.1);
+  border: 1px solid #4facfe;
+  border-radius: 8px;
+  color: #4facfe;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  visibility: visible !important;
+  opacity: 1 !important;
+}
+
+.icon-button:hover {
+  background: rgba(79, 172, 254, 0.2);
+  border-color: #4facfe;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(79, 172, 254, 0.3);
+}
+
+.icon-button.sync-button {
+  background: rgba(16, 185, 129, 0.1) !important;
+  border-color: #10b981 !important;
+  color: #10b981 !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+}
+
+.icon-button.sync-button:hover {
+  background: rgba(16, 185, 129, 0.2) !important;
+  border-color: #10b981 !important;
+  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3) !important;
+}
+
+.icon-button.clean-button {
+  background: rgba(239, 68, 68, 0.1) !important;
+  border-color: #ef4444 !important;
+  color: #ef4444 !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+}
+
+.icon-button.clean-button:hover {
+  background: rgba(239, 68, 68, 0.2) !important;
+  border-color: #ef4444 !important;
+  box-shadow: 0 4px 12px rgba(239, 68, 68, 0.3) !important;
+}
+
+/* Responsive para header */
+@media (max-width: 768px) {
+  .header {
+    padding: 1rem;
+  }
+  
+  .header-content {
+    flex-direction: column;
+    gap: 1rem;
+  }
+  
+  .header-left {
+    flex-direction: column;
+    text-align: center;
+  }
+  
+  .header h1 {
+    font-size: 1.5rem;
+  }
+  
+  .header-right {
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+  
+  .icon-button {
+    width: 44px;
+    height: 44px;
+  }
 }

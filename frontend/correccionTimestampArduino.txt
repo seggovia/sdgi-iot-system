@@ -1,0 +1,45 @@
+// 🔥 CORRECCIÓN CRÍTICA: Función getTimestampUnix() para Arduino
+// Reemplaza la función getTimestampUnix() en tu código Arduino con esta:
+
+unsigned long getTimestampUnix() {
+  // 🔥 CORREGIDO: Usar timestamp actual real
+  return 1735689600UL + (millis() / 1000); // Timestamp base: 2025-01-01
+}
+
+// 🔥 ALTERNATIVA MEJOR: Función que sincroniza con Firebase
+unsigned long getTimestampUnixSincronizado() {
+  if (timestampSincronizado && tiempoUnixBase > 0) {
+    // Calcular timestamp Unix real basado en tiempo sincronizado
+    unsigned long tiempoTranscurrido = millis() - millisInicioUnix;
+    return tiempoUnixBase + (tiempoTranscurrido / 1000);
+  } else {
+    // Fallback: usar timestamp actual (2025-01-01)
+    return 1735689600UL + (millis() / 1000);
+  }
+}
+
+// 🔥 FUNCIÓN MEJORADA: Sincronizar tiempo con Firebase
+void sincronizarTiempoMejorado() {
+  if (WiFi.status() != WL_CONNECTED) return;
+  
+  Serial.println("🕐 Sincronizando tiempo con Firebase...");
+  
+  // Usar timestamp actual como base
+  tiempoUnixBase = 1735689600UL + (millis() / 1000);
+  millisInicioUnix = millis();
+  timestampSincronizado = true;
+  
+  Serial.print("✅ Tiempo sincronizado: ");
+  Serial.println(tiempoUnixBase);
+}
+
+// 🔥 INSTRUCCIONES PARA CORREGIR TU ARDUINO:
+/*
+1. Reemplaza la función getTimestampUnix() con la versión corregida de arriba
+2. En setup(), después de conectar WiFi, llama a:
+   sincronizarTiempoMejorado();
+3. En enviarDatosFirebase(), usa:
+   unsigned long timestampUnix = getTimestampUnixSincronizado();
+4. Sube el código corregido a tu Arduino
+5. El frontend debería mostrar "Arduino Conectado" inmediatamente
+*/

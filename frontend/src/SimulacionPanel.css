@@ -79,12 +79,6 @@
   padding: 0.75rem;
   border-radius: 16px;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
-  /* 🔥 REMOVIDO: animation: iconPulse */
-}
-
-@keyframes iconPulse {
-  0%, 100% { transform: scale(1); }
-  50% { transform: scale(1.1); }
 }
 
 .sim-header h2 {
@@ -123,7 +117,14 @@
 }
 
 .sim-close-btn svg {
-  display: block; /* 🔥 AGREGADO */
+  display: block;
+  stroke: white !important;
+  fill: none !important;
+}
+
+.sim-close-btn svg line {
+  stroke: white !important;
+  stroke-width: 2.5px;
 }
 
 .sim-close-btn:hover {
@@ -193,6 +194,7 @@
   background: linear-gradient(135deg, rgba(99, 102, 241, 0.05), rgba(139, 92, 246, 0.05));
   border-radius: 16px;
   border: 2px solid rgba(99, 102, 241, 0.15);
+  transition: all 0.3s ease;
 }
 
 .sim-sensor-header {
@@ -218,6 +220,28 @@
   padding: 0.25rem 0.75rem;
   background-color: rgba(99, 102, 241, 0.1);
   border-radius: 12px;
+  transition: all 0.3s ease;
+}
+
+/* 🔥 NUEVO: Estilo para valores en alerta */
+.sim-sensor-value.alerta-rojo {
+  background: linear-gradient(135deg, #ef4444, #dc2626) !important;
+  -webkit-background-clip: text !important;
+  -webkit-text-fill-color: transparent !important;
+  background-clip: text !important;
+  background-color: rgba(239, 68, 68, 0.15) !important;
+  animation: valorAlertaPulse 1.5s ease-in-out infinite;
+}
+
+@keyframes valorAlertaPulse {
+  0%, 100% {
+    transform: scale(1);
+    filter: drop-shadow(0 0 0 rgba(239, 68, 68, 0));
+  }
+  50% {
+    transform: scale(1.05);
+    filter: drop-shadow(0 0 8px rgba(239, 68, 68, 0.5));
+  }
 }
 
 .sim-slider {
@@ -286,6 +310,11 @@
     inset 0 1px 0 rgba(255, 255, 255, 1);
 }
 
+.sim-slider:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 .sim-sensor-indicators {
   display: flex;
   justify-content: space-between;
@@ -314,6 +343,98 @@
   50% { 
     box-shadow: 0 0 0 8px rgba(239, 68, 68, 0); 
   }
+}
+
+/* ============================================
+   INFO BOX Y ALERTA BADGE
+   ============================================ */
+
+/* 🆕 MENSAJE DE FEEDBACK */
+.mensaje-feedback {
+  padding: 1rem 1.5rem;
+  border-radius: 12px;
+  font-weight: 700;
+  font-size: 1rem;
+  text-align: center;
+  margin-bottom: 1.5rem;
+  animation: fadeInDown 0.3s ease;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.mensaje-feedback.exito {
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.2), rgba(5, 150, 105, 0.3));
+  color: #059669;
+  border: 2px solid rgba(16, 185, 129, 0.5);
+}
+
+.mensaje-feedback.error {
+  background: linear-gradient(135deg, rgba(239, 68, 68, 0.2), rgba(220, 38, 38, 0.3));
+  color: #dc2626;
+  border: 2px solid rgba(239, 68, 68, 0.5);
+}
+
+@keyframes fadeInDown {
+  from {
+    opacity: 0;
+    transform: translateY(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.sim-info-box {
+  margin-top: 1.5rem;
+  padding: 1.25rem;
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.08), rgba(99, 102, 241, 0.08));
+  border: 2px solid rgba(59, 130, 246, 0.25);
+  border-radius: 14px;
+}
+
+.sim-info-box p {
+  margin: 0.5rem 0;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #1e293b;
+}
+
+.sim-info-box strong {
+  color: #3b82f6;
+  font-weight: 800;
+}
+
+.alerta-badge {
+  display: inline-block;
+  margin-left: 0.75rem;
+  padding: 0.25rem 0.75rem;
+  background: linear-gradient(135deg, #ef4444, #f87171);
+  color: white;
+  border-radius: 100px;
+  font-size: 0.8rem;
+  font-weight: 800;
+  animation: badgePulse 1.5s ease-in-out infinite;
+}
+
+@keyframes badgePulse {
+  0%, 100% {
+    transform: scale(1);
+    box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7);
+  }
+  50% {
+    transform: scale(1.05);
+    box-shadow: 0 0 0 8px rgba(239, 68, 68, 0);
+  }
+}
+
+.auto-incr-info {
+  margin-top: 0.75rem;
+  padding: 0.75rem;
+  background: rgba(245, 158, 11, 0.1);
+  border-left: 4px solid #f59e0b;
+  border-radius: 8px;
+  color: #92400e;
+  font-weight: 700;
 }
 
 /* ============================================
@@ -361,48 +482,57 @@
   height: 300px;
 }
 
+.sim-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none !important;
+}
+
 .sim-btn-primary {
   background: linear-gradient(135deg, #6366f1, #8b5cf6);
   color: white;
-  border: 2px solid rgba(255, 255, 255, 0.2);
+  border: 2px solid transparent;
 }
 
-.sim-btn-primary:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 8px 24px rgba(99, 102, 241, 0.4);
+.sim-btn-primary:hover:not(:disabled) {
+  transform: translateY(-3px);
+  box-shadow: 0 8px 20px rgba(99, 102, 241, 0.4);
 }
 
 .sim-btn-primary.active {
-  background: linear-gradient(135deg, #ef4444, #f87171);
-  animation: buttonBlink 1s ease-in-out infinite;
+  background: linear-gradient(135deg, #f59e0b, #d97706);
+  animation: btnActivePulse 2s ease-in-out infinite;
 }
 
-@keyframes buttonBlink {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.7; }
+@keyframes btnActivePulse {
+  0%, 100% {
+    box-shadow: 0 4px 12px rgba(245, 158, 11, 0.4);
+  }
+  50% {
+    box-shadow: 0 8px 24px rgba(245, 158, 11, 0.6);
+  }
 }
 
 .sim-btn-success {
-  background: linear-gradient(135deg, #10b981, #34d399);
+  background: linear-gradient(135deg, #10b981, #059669);
   color: white;
-  border: 2px solid rgba(255, 255, 255, 0.2);
+  border: 2px solid transparent;
 }
 
-.sim-btn-success:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 8px 24px rgba(16, 185, 129, 0.4);
+.sim-btn-success:hover:not(:disabled) {
+  transform: translateY(-3px);
+  box-shadow: 0 8px 20px rgba(16, 185, 129, 0.4);
 }
 
 .sim-btn-danger {
-  background: rgba(239, 68, 68, 0.1);
-  border: 2px solid rgba(239, 68, 68, 0.4);
-  color: #dc2626;
+  background: linear-gradient(135deg, #ef4444, #dc2626);
+  color: white;
+  border: 2px solid transparent;
 }
 
-.sim-btn-danger:hover {
-  background: rgba(239, 68, 68, 0.2);
-  transform: translateY(-2px);
-  box-shadow: 0 8px 24px rgba(239, 68, 68, 0.3);
+.sim-btn-danger:hover:not(:disabled) {
+  transform: translateY(-3px);
+  box-shadow: 0 8px 20px rgba(239, 68, 68, 0.4);
 }
 
 /* ============================================
@@ -418,15 +548,16 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 0.75rem;
-  padding: 2rem 1.5rem;
+  justify-content: center;
+  gap: 1rem;
+  padding: 2rem;
   border: 3px solid;
   border-radius: 20px;
   cursor: pointer;
   transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
   position: relative;
   overflow: hidden;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+  background: white;
 }
 
 .sim-alert-btn::before {
@@ -711,81 +842,4 @@
   .sim-status-grid {
     grid-template-columns: 1fr;
   }
-}
-/* ============================================
-   INFO BOX Y ALERTA BADGE
-   ============================================ */
-.sim-info-box {
-  margin-top: 1.5rem;
-  padding: 1.25rem;
-  background: linear-gradient(135deg, rgba(59, 130, 246, 0.08), rgba(99, 102, 241, 0.08));
-  border: 2px solid rgba(59, 130, 246, 0.25);
-  border-radius: 14px;
-}
-
-.sim-info-box p {
-  margin: 0.5rem 0;
-  font-size: 0.95rem;
-  font-weight: 600;
-  color: #1e293b;
-}
-
-.sim-info-box strong {
-  color: #3b82f6;
-  font-weight: 800;
-}
-
-.alerta-badge {
-  display: inline-block;
-  margin-left: 0.75rem;
-  padding: 0.25rem 0.75rem;
-  background: linear-gradient(135deg, #ef4444, #f87171);
-  color: white;
-  border-radius: 100px;
-  font-size: 0.8rem;
-  font-weight: 800;
-  animation: badgePulse 1.5s ease-in-out infinite;
-}
-
-@keyframes badgePulse {
-  0%, 100% {
-    transform: scale(1);
-    box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7);
-  }
-  50% {
-    transform: scale(1.05);
-    box-shadow: 0 0 0 8px rgba(239, 68, 68, 0);
-  }
-}
-
-.auto-incr-info {
-  margin-top: 0.75rem;
-  padding: 0.75rem;
-  background: rgba(245, 158, 11, 0.1);
-  border-left: 4px solid #f59e0b;
-  border-radius: 8px;
-  color: #92400e;
-  font-weight: 700;
-}
-
-.sim-slider:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.sim-btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-  transform: none !important;
-}
-
-.sim-close-btn svg {
-  display: block;
-  stroke: white !important;
-  fill: none !important;
-}
-
-.sim-close-btn svg line {
-  stroke: white !important;
-  stroke-width: 2.5px;
 }
