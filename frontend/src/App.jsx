@@ -568,6 +568,46 @@ function App() {
     }
   };
 
+  // 🔥 NUEVA FUNCIÓN: Restablecer sensores
+  const restablecerSensores = async () => {
+    try {
+      mostrarNotificacion('🔄 Restableciendo sensores...', 'info');
+      
+      // Enviar comando de restablecimiento al Arduino
+      const resetRef = ref(db, 'comandos/restablecer_sensores');
+      await set(resetRef, {
+        timestamp: Date.now(),
+        comando: 'restablecer_sensores',
+        origen: 'dashboard'
+      });
+      
+      mostrarNotificacion('✅ Comando de restablecimiento enviado al Arduino', 'success');
+    } catch (error) {
+      console.error('Error al restablecer sensores:', error);
+      mostrarNotificacion('❌ Error al restablecer sensores', 'error');
+    }
+  };
+
+  // 🔥 NUEVA FUNCIÓN: Apagar buzzer
+  const apagarBuzzer = async () => {
+    try {
+      mostrarNotificacion('🔇 Apagando buzzer...', 'info');
+      
+      // Enviar comando para apagar buzzer al Arduino
+      const buzzerRef = ref(db, 'comandos/apagar_buzzer');
+      await set(buzzerRef, {
+        timestamp: Date.now(),
+        comando: 'apagar_buzzer',
+        origen: 'dashboard'
+      });
+      
+      mostrarNotificacion('✅ Comando para apagar buzzer enviado al Arduino', 'success');
+    } catch (error) {
+      console.error('Error al apagar buzzer:', error);
+      mostrarNotificacion('❌ Error al apagar buzzer', 'error');
+    }
+  };
+
   // Preparar datos para el gráfico
   const datosGrafico = lecturas.slice(0, 20).reverse().map(l => ({
     tiempo: l.timestamp.toLocaleTimeString(),
@@ -592,23 +632,6 @@ function App() {
               {conexion.conectado ? <Wifi size={20} /> : <WifiOff size={20} />}
               <span>{conexion.conectado ? 'Arduino Conectado' : 'Arduino Desconectado'}</span>
             </div>
-            
-            {/* 🔥 NUEVOS BOTONES: Sincronización y Limpieza */}
-            <button
-              className="icon-button sync-button"
-              onClick={sincronizarArduino}
-              title="Sincronizar con Arduino"
-            >
-              <RefreshCw size={24} />
-            </button>
-            
-            <button
-              className="icon-button clean-button"
-              onClick={limpiarDatosFirebase}
-              title="Limpiar datos de Firebase"
-            >
-              <Trash size={24} />
-            </button>
             
             <button
               className="icon-button"
@@ -850,6 +873,70 @@ function App() {
               <p className="door-status">
                 Estado actual: <strong>{configuracion.servoAbierto ? '🚪 Abierta' : '🚪 Cerrada'}</strong>
               </p>
+            </div>
+
+            {/* 🔥 NUEVO CARD: Controles del Sistema */}
+            <div className="controls-card">
+              <h2 className="section-title">
+                <Settings size={24} />
+                <span>Controles del Sistema</span>
+              </h2>
+              
+              <div className="controls-grid">
+                {/* Botones de Sincronización y Limpieza */}
+                <div className="control-group">
+                  <h3>🔄 Sincronización y Limpieza</h3>
+                  <div className="control-buttons">
+                    <button
+                      className="control-btn sync-btn"
+                      onClick={sincronizarArduino}
+                      title="Sincronizar con Arduino"
+                    >
+                      <RefreshCw size={20} />
+                      <span>Sincronizar</span>
+                    </button>
+                    
+                    <button
+                      className="control-btn clean-btn"
+                      onClick={limpiarDatosFirebase}
+                      title="Limpiar datos de Firebase"
+                    >
+                      <Trash size={20} />
+                      <span>Limpiar Datos</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Control de Sensores */}
+                <div className="control-group">
+                  <h3>🔧 Control de Sensores</h3>
+                  <div className="control-buttons">
+                    <button
+                      className="control-btn reset-btn"
+                      onClick={restablecerSensores}
+                      title="Restablecer sensores"
+                    >
+                      <RefreshCw size={20} />
+                      <span>Restablecer Sensores</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Control de Buzzer */}
+                <div className="control-group">
+                  <h3>🔇 Control de Audio</h3>
+                  <div className="control-buttons">
+                    <button
+                      className="control-btn mute-btn"
+                      onClick={apagarBuzzer}
+                      title="Apagar buzzer"
+                    >
+                      <Volume2 size={20} />
+                      <span>Apagar Buzzer</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
             </div>
 
             {/* Gráfico */}
