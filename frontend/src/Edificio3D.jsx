@@ -3,7 +3,7 @@ import { Canvas, useFrame } from '@react-three/fiber';
 import { OrbitControls, Text } from '@react-three/drei';
 import { db } from './firebase';
 import { ref, get, set, onValue, query, orderByKey, limitToLast } from 'firebase/database';
-
+import './Edificio3D.css';
 // Componente del edificio
 function Edificio({ piso1Alerta, piso2Alerta, puertaAbierta, buzzerPiso1, buzzerPiso2, ledPiso1, ledPiso2, posiciones }) {
   const piso1Ref = useRef();
