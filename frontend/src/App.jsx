@@ -10,6 +10,7 @@ import {
   AlertTriangle,
   Power,
   Volume2,
+  VolumeX,
   DoorOpen,
   DoorClosed,
   PlayCircle,
@@ -244,7 +245,7 @@ function App() {
     buzzerVolumen: 255,
     ledPiso1Activo: true,
     ledPiso2Activo: true,
-    servoAbierto: false,
+    servoAbierto: false, // 🔥 PUERTA CERRADA POR DEFECTO EN CONTROLES
     modoSimulacion: false
   });
 
@@ -324,9 +325,10 @@ function App() {
     const unsubscribe = onValue(configRef, (snapshot) => {
       if (snapshot.exists()) {
         const config = snapshot.val();
+        // 🔥 CONTROLES LIBRES: Mantener servoAbierto del Firebase para controles
         setConfiguracion(config);
         setConfigTemp(config);
-        console.log('⚙️ Configuración cargada:', config);
+        console.log('⚙️ Configuración cargada (controles libres):', config);
       }
     });
 
@@ -588,22 +590,33 @@ function App() {
     }
   };
 
-  // 🔥 NUEVA FUNCIÓN: Apagar buzzer
-  const apagarBuzzer = async () => {
+  // 🔥 FUNCIÓN: Toggle buzzer (apagar/reactivar)
+  const toggleBuzzer = async () => {
     try {
-      mostrarNotificacion('🔇 Apagando buzzer...', 'info');
-      
-      // Desactivar ambos buzzers en la configuración del sistema
+      // Obtener el estado actual del botón
       const configRef = ref(db, 'configuracion/sistema');
-      await update(configRef, { 
-        buzzerPiso1Activo: false,
-        buzzerPiso2Activo: false
-      });
+      const snapshot = await get(configRef);
+      const config = snapshot.val();
+      const buzzerSilenciado = config?.botonApagarBuzzer || false;
       
-      mostrarNotificacion('✅ Buzzers desactivados - El Arduino los apagará automáticamente', 'success');
+      if (buzzerSilenciado) {
+        // Reactivar buzzers
+        mostrarNotificacion('🔊 Reactivando buzzers...', 'info');
+        await update(configRef, { 
+          botonApagarBuzzer: false
+        });
+        mostrarNotificacion('✅ Buzzers reactivados', 'success');
+      } else {
+        // Silenciar buzzers
+        mostrarNotificacion('🔇 Silenciando buzzers...', 'info');
+        await update(configRef, { 
+          botonApagarBuzzer: true
+        });
+        mostrarNotificacion('✅ Buzzers silenciados', 'success');
+      }
     } catch (error) {
-      console.error('Error al apagar buzzer:', error);
-      mostrarNotificacion('❌ Error al apagar buzzer', 'error');
+      console.error('Error al toggle buzzer:', error);
+      mostrarNotificacion('❌ Error al controlar buzzer', 'error');
     }
   };
 
@@ -766,7 +779,7 @@ function App() {
               <Edificio3D
                 piso1Alerta={alerta1}
                 piso2Alerta={alerta2}
-                puertaAbierta={configuracion.servoAbierto}
+                puertaAbierta={false}
                 buzzerPiso1={alerta1 && configuracion.buzzerPiso1Activo}
                 buzzerPiso2={alerta2 && configuracion.buzzerPiso2Activo}
                 ledPiso1={alerta1 && configuracion.ledPiso1Activo}
@@ -927,11 +940,11 @@ function App() {
                   <div className="control-buttons">
                     <button
                       className="control-btn mute-btn"
-                      onClick={apagarBuzzer}
-                      title="Apagar buzzer"
+                      onClick={toggleBuzzer}
+                      title={configuracion.botonApagarBuzzer ? "Reactivar buzzer" : "Silenciar buzzer"}
                     >
-                      <Volume2 size={20} />
-                      <span>Apagar Buzzer</span>
+                      {configuracion.botonApagarBuzzer ? <VolumeX size={20} /> : <Volume2 size={20} />}
+                      <span>{configuracion.botonApagarBuzzer ? "Reactivar Buzzer" : "Silenciar Buzzer"}</span>
                     </button>
                   </div>
                 </div>

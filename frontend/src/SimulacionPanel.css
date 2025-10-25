@@ -1,5 +1,5 @@
 /* ============================================
-   OVERLAY Y CONTENEDOR PRINCIPAL
+   🎮 PANEL DE SIMULACIÓN - OVERLAY Y CONTENEDOR
    ============================================ */
 .simulacion-overlay {
   position: fixed;
@@ -7,52 +7,60 @@
   left: 0;
   right: 0;
   bottom: 0;
-  background: rgba(0, 0, 0, 0.85);
-  backdrop-filter: blur(12px);
+  background: rgba(15, 23, 42, 0.95);
+  backdrop-filter: blur(25px) saturate(180%);
+  -webkit-backdrop-filter: blur(25px) saturate(180%);
   display: flex;
   align-items: center;
   justify-content: center;
   z-index: 10000;
   padding: 2rem;
-  animation: overlayFadeIn 0.3s ease;
+  animation: overlayFadeIn 0.4s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 @keyframes overlayFadeIn {
   from {
     opacity: 0;
+    backdrop-filter: blur(0px);
   }
   to {
     opacity: 1;
+    backdrop-filter: blur(25px);
   }
 }
 
 .simulacion-panel {
-  background: linear-gradient(135deg, #ffffff 0%, #f8fafc 100%);
+  background: linear-gradient(135deg, 
+    rgba(30, 41, 59, 0.98) 0%, 
+    rgba(15, 23, 42, 0.98) 100%
+  );
   border-radius: 32px;
-  max-width: 1000px;
+  max-width: 1100px;
   width: 100%;
   max-height: 90vh;
   overflow-y: auto;
   box-shadow: 
-    0 25px 50px -12px rgba(0, 0, 0, 0.5),
-    0 0 0 1px rgba(99, 102, 241, 0.2),
-    inset 0 1px 0 rgba(255, 255, 255, 0.9);
-  animation: panelSlideIn 0.4s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+    0 25px 50px -12px rgba(0, 0, 0, 0.8),
+    0 0 0 2px rgba(99, 102, 241, 0.4),
+    inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  animation: panelSlideIn 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
+  position: relative;
+  border: 2px solid rgba(99, 102, 241, 0.3);
 }
 
 @keyframes panelSlideIn {
   from {
     opacity: 0;
-    transform: scale(0.9) translateY(-50px);
+    transform: scale(0.85) translateY(-50px) rotateX(10deg);
   }
   to {
     opacity: 1;
-    transform: scale(1) translateY(0);
+    transform: scale(1) translateY(0) rotateX(0deg);
   }
 }
 
 /* ============================================
-   HEADER
+   🎨 HEADER DEL PANEL
    ============================================ */
 .sim-header {
   display: flex;
@@ -62,23 +70,57 @@
   background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
   border-radius: 32px 32px 0 0;
   color: white;
-  position: sticky;
+  position: sticky; /* 🔥 CAMBIO CLAVE */
   top: 0;
-  z-index: 10;
-  box-shadow: 0 4px 20px rgba(99, 102, 241, 0.3);
+  z-index: 100; /* 🔥 ASEGURAR QUE ESTÉ ARRIBA */
+  box-shadow: 
+    0 4px 20px rgba(99, 102, 241, 0.5),
+    inset 0 1px 0 rgba(255, 255, 255, 0.2),
+    0 8px 16px rgba(0, 0, 0, 0.3); /* 🔥 SOMBRA CUANDO HACE SCROLL */
+}
+
+.sim-header::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0.15) 50%,
+    transparent 100%
+  );
+  animation: headerShimmer 3s ease-in-out infinite;
+}
+
+@keyframes headerShimmer {
+  0% { left: -100%; }
+  100% { left: 100%; }
 }
 
 .sim-header-left {
   display: flex;
   align-items: center;
   gap: 1.5rem;
+  position: relative;
+  z-index: 1;
 }
 
 .sim-icon-main {
-  background: rgba(255, 255, 255, 0.2);
-  padding: 0.75rem;
-  border-radius: 16px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+  background: rgba(255, 255, 255, 0.25);
+  padding: 1rem;
+  border-radius: 20px;
+  box-shadow: 
+    0 8px 16px rgba(0, 0, 0, 0.2),
+    inset 0 1px 0 rgba(255, 255, 255, 0.3);
+  animation: iconFloat 3s ease-in-out infinite;
+}
+
+@keyframes iconFloat {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-8px); }
 }
 
 .sim-header h2 {
@@ -86,81 +128,102 @@
   font-weight: 900;
   margin: 0;
   letter-spacing: -0.5px;
-  text-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+  text-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  background: linear-gradient(to bottom, #ffffff, #e0e7ff);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
 }
 
 .sim-header p {
-  font-size: 0.95rem;
-  opacity: 0.9;
-  margin: 0.25rem 0 0 0;
+  font-size: 1rem;
+  opacity: 0.95;
+  margin: 0.5rem 0 0 0;
   font-weight: 500;
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
 }
 
 .sim-close-btn {
   background: rgba(255, 255, 255, 0.2);
   border: 2px solid rgba(255, 255, 255, 0.3);
   color: white;
-  width: 48px;
-  height: 48px;
+  width: 56px;
+  height: 56px;
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  transition: all 0.3s ease;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   backdrop-filter: blur(10px);
   flex-shrink: 0;
-  font-size: 28px;
-  font-weight: 300;
-  line-height: 1;
-  font-family: Arial, sans-serif;
-}
-
-.sim-close-btn svg {
-  display: block;
-  stroke: white !important;
-  fill: none !important;
-}
-
-.sim-close-btn svg line {
-  stroke: white !important;
-  stroke-width: 2.5px;
+  position: relative;
+  z-index: 1;
 }
 
 .sim-close-btn:hover {
-  background: rgba(255, 68, 68, 0.3);
-  border-color: rgba(255, 68, 68, 0.5);
-  transform: scale(1.1);
+  background: rgba(239, 68, 68, 0.3);
+  border-color: rgba(239, 68, 68, 0.6);
+  transform: scale(1.15) rotate(90deg);
+  box-shadow: 0 8px 24px rgba(239, 68, 68, 0.4);
 }
 
 .sim-close-btn:active {
-  transform: scale(0.95);
+  transform: scale(1.05) rotate(90deg);
 }
 
 /* ============================================
-   CONTENIDO
+   📦 CONTENIDO DEL PANEL
    ============================================ */
 .sim-content {
   padding: 3rem;
   display: flex;
   flex-direction: column;
   gap: 2.5rem;
+  background: linear-gradient(to bottom, 
+    rgba(15, 23, 42, 0.95), 
+    rgba(30, 41, 59, 0.95)
+  );
 }
 
 .sim-section {
-  background: white;
+  background: rgba(30, 41, 59, 0.8);
   border-radius: 24px;
   padding: 2rem;
-  border: 2px solid rgba(99, 102, 241, 0.1);
+  border: 2px solid rgba(99, 102, 241, 0.2);
   box-shadow: 
-    0 4px 12px rgba(0, 0, 0, 0.05),
-    inset 0 1px 0 rgba(255, 255, 255, 0.9);
-  transition: all 0.3s ease;
+    0 4px 12px rgba(0, 0, 0, 0.3),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative;
+  overflow: hidden;
+}
+
+.sim-section::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: linear-gradient(90deg, 
+    transparent 0%,
+    #6366f1 30%,
+    #8b5cf6 70%,
+    transparent 100%
+  );
+  opacity: 0;
+  transition: opacity 0.3s;
 }
 
 .sim-section:hover {
-  border-color: rgba(99, 102, 241, 0.2);
-  box-shadow: 0 8px 24px rgba(99, 102, 241, 0.1);
+  border-color: rgba(99, 102, 241, 0.4);
+  box-shadow: 0 12px 32px rgba(99, 102, 241, 0.2);
+  transform: translateY(-4px);
+}
+
+.sim-section:hover::before {
+  opacity: 1;
 }
 
 .sim-section-header {
@@ -169,68 +232,119 @@
   gap: 1rem;
   margin-bottom: 1.5rem;
   padding-bottom: 1rem;
-  border-bottom: 2px solid rgba(99, 102, 241, 0.1);
-  color: #6366f1;
+  border-bottom: 2px solid rgba(99, 102, 241, 0.2);
 }
 
 .sim-section-header svg {
-  filter: drop-shadow(0 2px 4px rgba(99, 102, 241, 0.3));
+  filter: drop-shadow(0 2px 4px rgba(99, 102, 241, 0.4));
+  transition: transform 0.3s ease;
+  color: #818cf8;
+}
+
+.sim-section:hover .sim-section-header svg {
+  transform: scale(1.1) rotate(5deg);
 }
 
 .sim-section-header h3 {
   font-size: 1.4rem;
   font-weight: 800;
-  color: #1e293b;
+  color: #f1f5f9;
   margin: 0;
   letter-spacing: -0.3px;
 }
 
 /* ============================================
-   CONTROL DE SENSORES
+   📊 CONTROL DE SENSORES
    ============================================ */
 .sim-sensor-control {
   margin-bottom: 2rem;
-  padding: 1.5rem;
-  background: linear-gradient(135deg, rgba(99, 102, 241, 0.05), rgba(139, 92, 246, 0.05));
-  border-radius: 16px;
-  border: 2px solid rgba(99, 102, 241, 0.15);
-  transition: all 0.3s ease;
+  padding: 1.75rem;
+  background: linear-gradient(135deg, 
+    rgba(99, 102, 241, 0.08), 
+    rgba(139, 92, 246, 0.08)
+  );
+  border-radius: 20px;
+  border: 2px solid rgba(99, 102, 241, 0.25);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative;
+  overflow: hidden;
+}
+
+.sim-sensor-control::before {
+  content: '';
+  position: absolute;
+  top: -2px;
+  left: -2px;
+  right: -2px;
+  bottom: -2px;
+  background: linear-gradient(135deg, #6366f1, #8b5cf6);
+  border-radius: 20px;
+  opacity: 0;
+  transition: opacity 0.3s;
+  z-index: 0;
+}
+
+.sim-sensor-control:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(99, 102, 241, 0.3);
+}
+
+.sim-sensor-control:hover::before {
+  opacity: 0.15;
 }
 
 .sim-sensor-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 1rem;
+  margin-bottom: 1.25rem;
+  position: relative;
+  z-index: 1;
 }
 
 .sim-sensor-label {
   font-size: 1.1rem;
   font-weight: 700;
-  color: #475569;
+  color: #cbd5e1;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
 }
 
 .sim-sensor-value {
-  font-size: 2rem;
+  font-size: 2.5rem;
   font-weight: 900;
-  background: linear-gradient(135deg, #6366f1, #8b5cf6);
+  background: linear-gradient(135deg, #818cf8, #a78bfa);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
-  padding: 0.25rem 0.75rem;
-  background-color: rgba(99, 102, 241, 0.1);
-  border-radius: 12px;
-  transition: all 0.3s ease;
+  padding: 0.5rem 1.25rem;
+  background-color: rgba(99, 102, 241, 0.15);
+  border-radius: 16px;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 
+    0 4px 12px rgba(99, 102, 241, 0.2),
+    inset 0 1px 0 rgba(255, 255, 255, 0.1);
 }
 
-/* 🔥 NUEVO: Estilo para valores en alerta */
+.sim-sensor-value:hover {
+  transform: scale(1.05);
+  box-shadow: 
+    0 6px 20px rgba(99, 102, 241, 0.35),
+    inset 0 1px 0 rgba(255, 255, 255, 0.15);
+}
+
+/* 🔥 Valor en ALERTA (rojo) */
 .sim-sensor-value.alerta-rojo {
   background: linear-gradient(135deg, #ef4444, #dc2626) !important;
   -webkit-background-clip: text !important;
   -webkit-text-fill-color: transparent !important;
   background-clip: text !important;
-  background-color: rgba(239, 68, 68, 0.15) !important;
+  background-color: rgba(239, 68, 68, 0.2) !important;
   animation: valorAlertaPulse 1.5s ease-in-out infinite;
+  box-shadow: 
+    0 0 25px rgba(239, 68, 68, 0.5),
+    inset 0 1px 0 rgba(255, 255, 255, 0.1);
 }
 
 @keyframes valorAlertaPulse {
@@ -239,14 +353,17 @@
     filter: drop-shadow(0 0 0 rgba(239, 68, 68, 0));
   }
   50% {
-    transform: scale(1.05);
-    filter: drop-shadow(0 0 8px rgba(239, 68, 68, 0.5));
+    transform: scale(1.08);
+    filter: drop-shadow(0 0 15px rgba(239, 68, 68, 0.7));
   }
 }
 
+/* ============================================
+   🎚️ SLIDER MODERNO
+   ============================================ */
 .sim-slider {
   width: 100%;
-  height: 12px;
+  height: 14px;
   border-radius: 100px;
   background: linear-gradient(90deg, 
     #10b981 0%, 
@@ -257,57 +374,66 @@
   -webkit-appearance: none;
   cursor: pointer;
   box-shadow: 
-    inset 0 2px 4px rgba(0, 0, 0, 0.1),
-    0 0 0 2px rgba(99, 102, 241, 0.2);
-  transition: all 0.3s ease;
+    inset 0 2px 4px rgba(0, 0, 0, 0.2),
+    0 0 0 3px rgba(99, 102, 241, 0.25);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative;
+  z-index: 1;
 }
 
 .sim-slider:hover {
   box-shadow: 
-    inset 0 2px 4px rgba(0, 0, 0, 0.15),
-    0 0 0 3px rgba(99, 102, 241, 0.4);
+    inset 0 2px 4px rgba(0, 0, 0, 0.3),
+    0 0 0 4px rgba(99, 102, 241, 0.5);
+  transform: scaleY(1.15);
 }
 
 .sim-slider::-webkit-slider-thumb {
   -webkit-appearance: none;
   appearance: none;
-  width: 32px;
-  height: 32px;
+  width: 36px;
+  height: 36px;
   border-radius: 50%;
   background: linear-gradient(135deg, #ffffff, #f1f5f9);
   cursor: pointer;
   border: 4px solid #6366f1;
   box-shadow: 
-    0 4px 12px rgba(99, 102, 241, 0.5),
-    inset 0 1px 0 rgba(255, 255, 255, 0.8);
-  transition: all 0.3s ease;
+    0 6px 16px rgba(99, 102, 241, 0.7),
+    inset 0 1px 0 rgba(255, 255, 255, 1);
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .sim-slider::-webkit-slider-thumb:hover {
-  transform: scale(1.2);
+  transform: scale(1.25);
   box-shadow: 
-    0 6px 20px rgba(99, 102, 241, 0.7),
-    inset 0 1px 0 rgba(255, 255, 255, 1);
+    0 8px 24px rgba(99, 102, 241, 0.9),
+    inset 0 2px 0 rgba(255, 255, 255, 1);
+  border-width: 5px;
+}
+
+.sim-slider::-webkit-slider-thumb:active {
+  transform: scale(1.15);
 }
 
 .sim-slider::-moz-range-thumb {
-  width: 32px;
-  height: 32px;
+  width: 36px;
+  height: 36px;
   border-radius: 50%;
   background: linear-gradient(135deg, #ffffff, #f1f5f9);
   cursor: pointer;
   border: 4px solid #6366f1;
   box-shadow: 
-    0 4px 12px rgba(99, 102, 241, 0.5),
-    inset 0 1px 0 rgba(255, 255, 255, 0.8);
-  transition: all 0.3s ease;
+    0 6px 16px rgba(99, 102, 241, 0.7),
+    inset 0 1px 0 rgba(255, 255, 255, 1);
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .sim-slider::-moz-range-thumb:hover {
-  transform: scale(1.2);
+  transform: scale(1.25);
   box-shadow: 
-    0 6px 20px rgba(99, 102, 241, 0.7),
-    inset 0 1px 0 rgba(255, 255, 255, 1);
+    0 8px 24px rgba(99, 102, 241, 0.9),
+    inset 0 2px 0 rgba(255, 255, 255, 1);
+  border-width: 5px;
 }
 
 .sim-slider:disabled {
@@ -315,62 +441,94 @@
   cursor: not-allowed;
 }
 
+.sim-slider:disabled::-webkit-slider-thumb {
+  cursor: not-allowed;
+  border-color: #94a3b8;
+}
+
+.sim-slider:disabled::-moz-range-thumb {
+  cursor: not-allowed;
+  border-color: #94a3b8;
+}
+
+/* ============================================
+   📍 INDICADORES DEL SENSOR
+   ============================================ */
 .sim-sensor-indicators {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-top: 0.75rem;
-  font-size: 0.85rem;
-  font-weight: 600;
-  color: #64748b;
+  margin-top: 1rem;
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: #94a3b8;
+  position: relative;
+  z-index: 1;
 }
 
 .umbral-indicator {
-  padding: 0.35rem 0.75rem;
-  background: rgba(239, 68, 68, 0.15);
-  border: 2px solid rgba(239, 68, 68, 0.4);
+  padding: 0.5rem 1rem;
+  background: rgba(239, 68, 68, 0.2);
+  border: 2px solid rgba(239, 68, 68, 0.6);
   border-radius: 100px;
-  color: #dc2626;
+  color: #fca5a5;
   font-weight: 800;
-  font-size: 0.8rem;
+  font-size: 0.85rem;
   animation: umbralPulse 2s ease-in-out infinite;
+  box-shadow: 
+    0 4px 12px rgba(239, 68, 68, 0.3),
+    inset 0 1px 0 rgba(255, 255, 255, 0.1);
 }
 
 @keyframes umbralPulse {
   0%, 100% { 
-    box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4); 
+    box-shadow: 
+      0 4px 12px rgba(239, 68, 68, 0.3),
+      0 0 0 0 rgba(239, 68, 68, 0.5); 
   }
   50% { 
-    box-shadow: 0 0 0 8px rgba(239, 68, 68, 0); 
+    box-shadow: 
+      0 6px 16px rgba(239, 68, 68, 0.4),
+      0 0 0 12px rgba(239, 68, 68, 0); 
   }
 }
 
 /* ============================================
-   INFO BOX Y ALERTA BADGE
+   💬 MENSAJE DE FEEDBACK
    ============================================ */
-
-/* 🆕 MENSAJE DE FEEDBACK */
 .mensaje-feedback {
-  padding: 1rem 1.5rem;
-  border-radius: 12px;
+  padding: 1.25rem 1.75rem;
+  border-radius: 16px;
   font-weight: 700;
-  font-size: 1rem;
+  font-size: 1.05rem;
   text-align: center;
   margin-bottom: 1.5rem;
-  animation: fadeInDown 0.3s ease;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  animation: fadeInDown 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
 }
 
 .mensaje-feedback.exito {
-  background: linear-gradient(135deg, rgba(16, 185, 129, 0.2), rgba(5, 150, 105, 0.3));
-  color: #059669;
-  border: 2px solid rgba(16, 185, 129, 0.5);
+  background: linear-gradient(135deg, 
+    rgba(16, 185, 129, 0.25), 
+    rgba(5, 150, 105, 0.35)
+  );
+  color: #6ee7b7;
+  border: 2px solid rgba(16, 185, 129, 0.7);
+  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
 }
 
 .mensaje-feedback.error {
-  background: linear-gradient(135deg, rgba(239, 68, 68, 0.2), rgba(220, 38, 38, 0.3));
-  color: #dc2626;
-  border: 2px solid rgba(239, 68, 68, 0.5);
+  background: linear-gradient(135deg, 
+    rgba(239, 68, 68, 0.25), 
+    rgba(220, 38, 38, 0.35)
+  );
+  color: #fca5a5;
+  border: 2px solid rgba(239, 68, 68, 0.7);
+  box-shadow: 0 4px 12px rgba(239, 68, 68, 0.3);
 }
 
 @keyframes fadeInDown {
@@ -384,61 +542,81 @@
   }
 }
 
+/* ============================================
+   ℹ️ INFO BOX
+   ============================================ */
 .sim-info-box {
   margin-top: 1.5rem;
-  padding: 1.25rem;
-  background: linear-gradient(135deg, rgba(59, 130, 246, 0.08), rgba(99, 102, 241, 0.08));
-  border: 2px solid rgba(59, 130, 246, 0.25);
-  border-radius: 14px;
+  padding: 1.5rem;
+  background: linear-gradient(135deg, 
+    rgba(59, 130, 246, 0.1), 
+    rgba(99, 102, 241, 0.1)
+  );
+  border: 2px solid rgba(59, 130, 246, 0.3);
+  border-radius: 16px;
+  position: relative;
+  overflow: hidden;
+}
+
+.sim-info-box::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+  background: linear-gradient(to bottom, #3b82f6, #6366f1);
 }
 
 .sim-info-box p {
   margin: 0.5rem 0;
   font-size: 0.95rem;
   font-weight: 600;
-  color: #1e293b;
+  color: #cbd5e1;
+  padding-left: 1rem;
 }
 
 .sim-info-box strong {
-  color: #3b82f6;
+  color: #818cf8;
   font-weight: 800;
 }
 
 .alerta-badge {
   display: inline-block;
   margin-left: 0.75rem;
-  padding: 0.25rem 0.75rem;
+  padding: 0.35rem 0.85rem;
   background: linear-gradient(135deg, #ef4444, #f87171);
   color: white;
   border-radius: 100px;
-  font-size: 0.8rem;
+  font-size: 0.85rem;
   font-weight: 800;
   animation: badgePulse 1.5s ease-in-out infinite;
+  box-shadow: 0 4px 12px rgba(239, 68, 68, 0.5);
 }
 
 @keyframes badgePulse {
   0%, 100% {
     transform: scale(1);
-    box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7);
+    box-shadow: 0 4px 12px rgba(239, 68, 68, 0.5);
   }
   50% {
     transform: scale(1.05);
-    box-shadow: 0 0 0 8px rgba(239, 68, 68, 0);
+    box-shadow: 0 6px 20px rgba(239, 68, 68, 0.7);
   }
 }
 
 .auto-incr-info {
-  margin-top: 0.75rem;
-  padding: 0.75rem;
-  background: rgba(245, 158, 11, 0.1);
+  margin-top: 1rem;
+  padding: 1rem;
+  background: rgba(245, 158, 11, 0.15);
   border-left: 4px solid #f59e0b;
   border-radius: 8px;
-  color: #92400e;
+  color: #fbbf24;
   font-weight: 700;
+  font-size: 0.9rem;
 }
-
 /* ============================================
-   BOTONES DE CONTROL
+   🎮 BOTONES DE CONTROL
    ============================================ */
 .sim-controls-grid {
   display: grid;
@@ -452,16 +630,16 @@
   align-items: center;
   justify-content: center;
   gap: 0.75rem;
-  padding: 1rem 1.5rem;
+  padding: 1.25rem 1.5rem;
   border: none;
-  border-radius: 14px;
+  border-radius: 16px;
   font-weight: 700;
-  font-size: 0.95rem;
+  font-size: 1rem;
   cursor: pointer;
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   position: relative;
   overflow: hidden;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
 }
 
 .sim-btn::before {
@@ -472,14 +650,14 @@
   width: 0;
   height: 0;
   border-radius: 50%;
-  background: rgba(255, 255, 255, 0.4);
+  background: rgba(255, 255, 255, 0.5);
   transform: translate(-50%, -50%);
   transition: width 0.6s, height 0.6s;
 }
 
 .sim-btn:active::before {
-  width: 300px;
-  height: 300px;
+  width: 400px;
+  height: 400px;
 }
 
 .sim-btn:disabled {
@@ -488,15 +666,25 @@
   transform: none !important;
 }
 
+.sim-btn svg {
+  transition: transform 0.3s ease;
+}
+
+.sim-btn:hover:not(:disabled) svg {
+  transform: scale(1.2) rotate(5deg);
+}
+
+/* Botón Primario */
 .sim-btn-primary {
   background: linear-gradient(135deg, #6366f1, #8b5cf6);
   color: white;
   border: 2px solid transparent;
+  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.4);
 }
 
 .sim-btn-primary:hover:not(:disabled) {
-  transform: translateY(-3px);
-  box-shadow: 0 8px 20px rgba(99, 102, 241, 0.4);
+  transform: translateY(-4px);
+  box-shadow: 0 12px 28px rgba(99, 102, 241, 0.5);
 }
 
 .sim-btn-primary.active {
@@ -506,37 +694,43 @@
 
 @keyframes btnActivePulse {
   0%, 100% {
-    box-shadow: 0 4px 12px rgba(245, 158, 11, 0.4);
+    box-shadow: 0 4px 12px rgba(245, 158, 11, 0.5);
+    transform: scale(1);
   }
   50% {
-    box-shadow: 0 8px 24px rgba(245, 158, 11, 0.6);
+    box-shadow: 0 8px 24px rgba(245, 158, 11, 0.7);
+    transform: scale(1.02);
   }
 }
 
+/* Botón Éxito */
 .sim-btn-success {
   background: linear-gradient(135deg, #10b981, #059669);
   color: white;
   border: 2px solid transparent;
+  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.4);
 }
 
 .sim-btn-success:hover:not(:disabled) {
-  transform: translateY(-3px);
-  box-shadow: 0 8px 20px rgba(16, 185, 129, 0.4);
+  transform: translateY(-4px);
+  box-shadow: 0 12px 28px rgba(16, 185, 129, 0.5);
 }
 
+/* Botón Peligro */
 .sim-btn-danger {
   background: linear-gradient(135deg, #ef4444, #dc2626);
   color: white;
   border: 2px solid transparent;
+  box-shadow: 0 4px 12px rgba(239, 68, 68, 0.4);
 }
 
 .sim-btn-danger:hover:not(:disabled) {
-  transform: translateY(-3px);
-  box-shadow: 0 8px 20px rgba(239, 68, 68, 0.4);
+  transform: translateY(-4px);
+  box-shadow: 0 12px 28px rgba(239, 68, 68, 0.5);
 }
 
 /* ============================================
-   ALERTAS RÁPIDAS
+   🚨 ALERTAS RÁPIDAS POR PISO
    ============================================ */
 .sim-alert-grid {
   display: grid;
@@ -550,14 +744,15 @@
   align-items: center;
   justify-content: center;
   gap: 1rem;
-  padding: 2rem;
+  padding: 2.5rem 2rem;
   border: 3px solid;
-  border-radius: 20px;
+  border-radius: 24px;
   cursor: pointer;
   transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
   position: relative;
   overflow: hidden;
-  background: white;
+  background: rgba(30, 41, 59, 0.6);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
 }
 
 .sim-alert-btn::before {
@@ -567,7 +762,11 @@
   left: -100%;
   width: 100%;
   height: 100%;
-  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.3), transparent);
+  background: linear-gradient(90deg, 
+    transparent, 
+    rgba(255, 255, 255, 0.3), 
+    transparent
+  );
   transition: left 0.6s;
 }
 
@@ -576,48 +775,61 @@
 }
 
 .sim-alert-btn.piso1 {
-  background: linear-gradient(135deg, rgba(79, 172, 254, 0.1), rgba(99, 102, 241, 0.1));
-  border-color: rgba(79, 172, 254, 0.4);
-  color: #3b82f6;
+  background: linear-gradient(135deg, 
+    rgba(79, 172, 254, 0.12), 
+    rgba(99, 102, 241, 0.12)
+  );
+  border-color: rgba(79, 172, 254, 0.5);
+  color: #60a5fa;
 }
 
 .sim-alert-btn.piso1:hover {
-  transform: translateY(-8px) scale(1.05);
-  border-color: rgba(79, 172, 254, 0.8);
-  box-shadow: 0 12px 32px rgba(79, 172, 254, 0.3);
+  transform: translateY(-10px) scale(1.03);
+  border-color: rgba(79, 172, 254, 0.9);
+  box-shadow: 0 16px 40px rgba(79, 172, 254, 0.4);
 }
 
 .sim-alert-btn.piso2 {
-  background: linear-gradient(135deg, rgba(167, 139, 250, 0.1), rgba(139, 92, 246, 0.1));
-  border-color: rgba(167, 139, 250, 0.4);
-  color: #8b5cf6;
+  background: linear-gradient(135deg, 
+    rgba(167, 139, 250, 0.12), 
+    rgba(139, 92, 246, 0.12)
+  );
+  border-color: rgba(167, 139, 250, 0.5);
+  color: #a78bfa;
 }
 
 .sim-alert-btn.piso2:hover {
-  transform: translateY(-8px) scale(1.05);
-  border-color: rgba(167, 139, 250, 0.8);
-  box-shadow: 0 12px 32px rgba(167, 139, 250, 0.3);
+  transform: translateY(-10px) scale(1.03);
+  border-color: rgba(167, 139, 250, 0.9);
+  box-shadow: 0 16px 40px rgba(167, 139, 250, 0.4);
 }
 
 .sim-alert-btn svg {
-  filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.15));
+  filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.3));
+  transition: transform 0.3s ease;
+}
+
+.sim-alert-btn:hover svg {
+  transform: scale(1.15) rotate(5deg);
 }
 
 .sim-alert-btn span {
-  font-size: 1.1rem;
+  font-size: 1.2rem;
   font-weight: 800;
   text-align: center;
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
 }
 
 .sim-alert-btn small {
-  font-size: 0.8rem;
+  font-size: 0.85rem;
   font-weight: 600;
-  opacity: 0.7;
+  opacity: 0.8;
   text-align: center;
+  line-height: 1.4;
 }
 
 /* ============================================
-   ESCENARIOS PREDEFINIDOS
+   🎬 ESCENARIOS PREDEFINIDOS
    ============================================ */
 .sim-scenarios-grid {
   display: grid;
@@ -626,19 +838,23 @@
 }
 
 .sim-scenario-card {
-  background: linear-gradient(135deg, rgba(99, 102, 241, 0.05), rgba(139, 92, 246, 0.05));
-  border: 2px solid rgba(99, 102, 241, 0.2);
-  border-radius: 20px;
-  padding: 2rem;
+  background: linear-gradient(135deg, 
+    rgba(99, 102, 241, 0.08), 
+    rgba(139, 92, 246, 0.08)
+  );
+  border: 2px solid rgba(99, 102, 241, 0.3);
+  border-radius: 24px;
+  padding: 2.5rem 2rem;
   cursor: pointer;
   transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
   display: flex;
   flex-direction: column;
   align-items: center;
   text-align: center;
-  gap: 0.75rem;
+  gap: 1rem;
   position: relative;
   overflow: hidden;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
 }
 
 .sim-scenario-card::before {
@@ -648,15 +864,18 @@
   left: 0;
   right: 0;
   bottom: 0;
-  background: linear-gradient(135deg, rgba(99, 102, 241, 0.1), rgba(139, 92, 246, 0.1));
+  background: linear-gradient(135deg, 
+    rgba(99, 102, 241, 0.15), 
+    rgba(139, 92, 246, 0.15)
+  );
   opacity: 0;
   transition: opacity 0.3s;
 }
 
 .sim-scenario-card:hover {
-  transform: translateY(-8px) scale(1.05);
-  border-color: rgba(99, 102, 241, 0.5);
-  box-shadow: 0 12px 32px rgba(99, 102, 241, 0.25);
+  transform: translateY(-10px) scale(1.03);
+  border-color: rgba(99, 102, 241, 0.6);
+  box-shadow: 0 16px 40px rgba(99, 102, 241, 0.3);
 }
 
 .sim-scenario-card:hover::before {
@@ -668,7 +887,7 @@
   border-color: #6366f1;
   color: white;
   box-shadow: 
-    0 12px 32px rgba(99, 102, 241, 0.4),
+    0 16px 40px rgba(99, 102, 241, 0.6),
     inset 0 1px 0 rgba(255, 255, 255, 0.2);
   animation: scenarioActive 1.5s ease-in-out infinite;
 }
@@ -676,50 +895,61 @@
 @keyframes scenarioActive {
   0%, 100% { 
     box-shadow: 
-      0 12px 32px rgba(99, 102, 241, 0.4),
-      inset 0 1px 0 rgba(255, 255, 255, 0.2); 
+      0 16px 40px rgba(99, 102, 241, 0.6),
+      inset 0 1px 0 rgba(255, 255, 255, 0.2),
+      0 0 0 0 rgba(99, 102, 241, 0.7); 
   }
   50% { 
     box-shadow: 
-      0 16px 48px rgba(99, 102, 241, 0.6),
-      inset 0 1px 0 rgba(255, 255, 255, 0.3); 
+      0 20px 50px rgba(99, 102, 241, 0.8),
+      inset 0 1px 0 rgba(255, 255, 255, 0.3),
+      0 0 0 15px rgba(99, 102, 241, 0); 
   }
 }
 
 .scenario-icon {
-  font-size: 3rem;
+  font-size: 4rem;
   margin-bottom: 0.5rem;
-  filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.15));
+  filter: drop-shadow(0 8px 16px rgba(0, 0, 0, 0.3));
   animation: iconFloat 3s ease-in-out infinite;
+  position: relative;
+  z-index: 1;
 }
 
 @keyframes iconFloat {
-  0%, 100% { transform: translateY(0); }
-  50% { transform: translateY(-10px); }
+  0%, 100% { transform: translateY(0) rotate(0deg); }
+  50% { transform: translateY(-15px) rotate(5deg); }
 }
 
 .sim-scenario-card h4 {
-  font-size: 1.2rem;
+  font-size: 1.3rem;
   font-weight: 800;
   margin: 0;
   letter-spacing: -0.3px;
+  position: relative;
+  z-index: 1;
+  color: #f1f5f9;
 }
 
 .sim-scenario-card p {
-  font-size: 0.9rem;
+  font-size: 0.95rem;
   font-weight: 600;
-  opacity: 0.8;
+  opacity: 0.85;
   margin: 0;
-  line-height: 1.4;
+  line-height: 1.5;
+  position: relative;
+  z-index: 1;
+  color: #cbd5e1;
 }
 
 .sim-scenario-card.active h4,
 .sim-scenario-card.active p {
   color: white;
+  text-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
 }
 
 /* ============================================
-   ESTADO DEL SISTEMA
+   📊 ESTADO DEL SISTEMA
    ============================================ */
 .sim-status-grid {
   display: grid;
@@ -730,84 +960,105 @@
 .sim-status-item {
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
-  padding: 1rem;
-  background: rgba(99, 102, 241, 0.05);
-  border-radius: 12px;
-  border: 2px solid rgba(99, 102, 241, 0.1);
-  transition: all 0.3s ease;
+  gap: 0.75rem;
+  padding: 1.25rem;
+  background: rgba(99, 102, 241, 0.08);
+  border-radius: 16px;
+  border: 2px solid rgba(99, 102, 241, 0.2);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .sim-status-item:hover {
-  border-color: rgba(99, 102, 241, 0.3);
-  transform: translateY(-2px);
+  border-color: rgba(99, 102, 241, 0.4);
+  transform: translateY(-4px);
+  box-shadow: 0 8px 20px rgba(99, 102, 241, 0.2);
 }
 
 .status-label {
   font-size: 0.85rem;
   font-weight: 700;
-  color: #64748b;
+  color: #94a3b8;
   text-transform: uppercase;
   letter-spacing: 0.5px;
 }
 
 .status-badge {
-  padding: 0.5rem 0.75rem;
-  border-radius: 8px;
-  font-size: 0.9rem;
+  padding: 0.75rem 1rem;
+  border-radius: 12px;
+  font-size: 0.95rem;
   font-weight: 800;
   text-align: center;
-  transition: all 0.3s ease;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
 }
 
 .status-badge.active {
-  background: linear-gradient(135deg, rgba(16, 185, 129, 0.2), rgba(5, 150, 105, 0.3));
-  color: #059669;
-  border: 2px solid rgba(16, 185, 129, 0.5);
-  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.2);
+  background: linear-gradient(135deg, 
+    rgba(16, 185, 129, 0.25), 
+    rgba(5, 150, 105, 0.35)
+  );
+  color: #6ee7b7;
+  border: 2px solid rgba(16, 185, 129, 0.6);
+  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
   animation: statusActivePulse 2s ease-in-out infinite;
 }
 
 @keyframes statusActivePulse {
   0%, 100% { 
-    box-shadow: 0 4px 12px rgba(16, 185, 129, 0.2); 
+    box-shadow: 
+      0 4px 12px rgba(16, 185, 129, 0.3),
+      0 0 0 0 rgba(16, 185, 129, 0.5); 
   }
   50% { 
-    box-shadow: 0 6px 20px rgba(16, 185, 129, 0.4); 
+    box-shadow: 
+      0 6px 20px rgba(16, 185, 129, 0.5),
+      0 0 0 10px rgba(16, 185, 129, 0); 
   }
 }
 
 .status-badge.inactive {
-  background: rgba(148, 163, 184, 0.1);
-  color: #94a3b8;
-  border: 2px solid rgba(148, 163, 184, 0.3);
+  background: rgba(148, 163, 184, 0.2);
+  color: #cbd5e1;
+  border: 2px solid rgba(148, 163, 184, 0.4);
 }
 
 /* ============================================
-   SCROLLBAR PERSONALIZADA
+   📜 SCROLLBAR PERSONALIZADA
    ============================================ */
 .simulacion-panel::-webkit-scrollbar {
-  width: 12px;
+  width: 14px;
 }
 
 .simulacion-panel::-webkit-scrollbar-track {
-  background: rgba(99, 102, 241, 0.05);
+  background: rgba(99, 102, 241, 0.08);
   border-radius: 0 32px 32px 0;
 }
 
 .simulacion-panel::-webkit-scrollbar-thumb {
   background: linear-gradient(135deg, #6366f1, #8b5cf6);
   border-radius: 100px;
-  border: 3px solid rgba(255, 255, 255, 0.3);
+  border: 4px solid rgba(30, 41, 59, 0.5);
+  transition: all 0.3s ease;
 }
 
 .simulacion-panel::-webkit-scrollbar-thumb:hover {
   background: linear-gradient(135deg, #8b5cf6, #ec4899);
+  border: 3px solid rgba(30, 41, 59, 0.5);
 }
 
 /* ============================================
-   RESPONSIVE
+   📱 RESPONSIVE DESIGN
    ============================================ */
+@media (max-width: 1024px) {
+  .sim-controls-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  
+  .sim-scenarios-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
 @media (max-width: 768px) {
   .simulacion-overlay {
     padding: 1rem;
@@ -815,25 +1066,55 @@
 
   .simulacion-panel {
     max-height: 95vh;
+    border-radius: 24px;
   }
 
   .sim-header {
     padding: 2rem 1.5rem;
     flex-direction: column;
     gap: 1.5rem;
+    border-radius: 24px 24px 0 0;
   }
 
   .sim-header-left {
     flex-direction: column;
     text-align: center;
+    width: 100%;
   }
 
   .sim-header h2 {
     font-size: 1.5rem;
   }
 
+  .sim-header p {
+    font-size: 0.9rem;
+  }
+
+  .sim-close-btn {
+    width: 48px;
+    height: 48px;
+  }
+
   .sim-content {
     padding: 1.5rem;
+    gap: 2rem;
+  }
+
+  .sim-section {
+    padding: 1.5rem;
+  }
+
+  .sim-section-header h3 {
+    font-size: 1.2rem;
+  }
+
+  .sim-sensor-control {
+    padding: 1.5rem;
+  }
+
+  .sim-sensor-value {
+    font-size: 2rem;
+    padding: 0.5rem 1rem;
   }
 
   .sim-controls-grid,
@@ -841,5 +1122,177 @@
   .sim-scenarios-grid,
   .sim-status-grid {
     grid-template-columns: 1fr;
+  }
+
+  .sim-btn {
+    padding: 1rem 1.25rem;
+    font-size: 0.95rem;
+  }
+
+  .sim-alert-btn {
+    padding: 2rem 1.5rem;
+  }
+
+  .sim-alert-btn span {
+    font-size: 1.1rem;
+  }
+
+  .sim-scenario-card {
+    padding: 2rem 1.5rem;
+  }
+
+  .scenario-icon {
+    font-size: 3rem;
+  }
+
+  .sim-scenario-card h4 {
+    font-size: 1.1rem;
+  }
+
+  .sim-scenario-card p {
+    font-size: 0.9rem;
+  }
+}
+
+@media (max-width: 480px) {
+  .simulacion-panel {
+    border-radius: 20px;
+  }
+
+  .sim-header {
+    padding: 1.5rem 1rem;
+    border-radius: 20px 20px 0 0;
+  }
+
+  .sim-header h2 {
+    font-size: 1.3rem;
+  }
+
+  .sim-content {
+    padding: 1rem;
+  }
+
+  .sim-section {
+    padding: 1rem;
+  }
+
+  .sim-sensor-value {
+    font-size: 1.8rem;
+  }
+
+  .sim-slider {
+    height: 12px;
+  }
+
+  .sim-slider::-webkit-slider-thumb {
+    width: 32px;
+    height: 32px;
+  }
+
+  .sim-slider::-moz-range-thumb {
+    width: 32px;
+    height: 32px;
+  }
+
+  .mensaje-feedback {
+    font-size: 0.9rem;
+    padding: 1rem 1.25rem;
+  }
+
+  .sim-info-box {
+    padding: 1rem;
+  }
+
+  .sim-info-box p {
+    font-size: 0.85rem;
+  }
+}
+
+/* ============================================
+   ✨ EFECTOS ESPECIALES Y ANIMACIONES
+   ============================================ */
+
+/* Efecto de partículas en hover */
+@keyframes particleRise {
+  0% {
+    transform: translateY(0) scale(1);
+    opacity: 0;
+  }
+  25% { opacity: 1; }
+  100% {
+    transform: translateY(-100px) scale(0.5);
+    opacity: 0;
+  }
+}
+
+/* Efecto de brillo en elementos activos */
+@keyframes shimmerGlow {
+  0% { background-position: -100% center; }
+  100% { background-position: 200% center; }
+}
+
+/* Animación de entrada de secciones */
+@keyframes sectionFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.sim-section {
+  animation: sectionFadeIn 0.4s ease forwards;
+}
+
+.sim-section:nth-child(1) { animation-delay: 0.1s; }
+.sim-section:nth-child(2) { animation-delay: 0.2s; }
+.sim-section:nth-child(3) { animation-delay: 0.3s; }
+.sim-section:nth-child(4) { animation-delay: 0.4s; }
+
+/* Efecto de carga en botones deshabilitados */
+.sim-btn:disabled {
+  position: relative;
+  overflow: hidden;
+}
+
+.sim-btn:disabled::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, 
+    transparent 0%, 
+    rgba(255, 255, 255, 0.15) 50%, 
+    transparent 100%
+  );
+  animation: loadingShimmer 1.5s infinite;
+}
+
+@keyframes loadingShimmer {
+  0% { left: -100%; }
+  100% { left: 100%; }
+}
+
+/* Efecto de foco mejorado para accesibilidad */
+.sim-btn:focus-visible,
+.sim-slider:focus-visible,
+.sim-alert-btn:focus-visible,
+.sim-scenario-card:focus-visible {
+  outline: 3px solid rgba(99, 102, 241, 0.6);
+  outline-offset: 4px;
+}
+
+/* Animación de entrada del overlay */
+@keyframes overlayEnter {
+  from {
+    background: rgba(15, 23, 42, 0);
+  }
+  to {
+    background: rgba(15, 23, 42, 0.95);
   }
 }
