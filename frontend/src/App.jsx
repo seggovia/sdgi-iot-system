@@ -245,7 +245,7 @@ function App() {
     buzzerVolumen: 255,
     ledPiso1Activo: true,
     ledPiso2Activo: true,
-    servoAbierto: false, // 🔥 PUERTA CERRADA POR DEFECTO
+    servoAbierto: false, // 🔥 PUERTA CERRADA POR DEFECTO EN CONTROLES
     modoSimulacion: false
   });
 
@@ -325,14 +325,10 @@ function App() {
     const unsubscribe = onValue(configRef, (snapshot) => {
       if (snapshot.exists()) {
         const config = snapshot.val();
-        // 🔥 ASEGURAR: Puerta cerrada por defecto
-        const configConPuertaCerrada = {
-          ...config,
-          servoAbierto: false
-        };
-        setConfiguracion(configConPuertaCerrada);
-        setConfigTemp(configConPuertaCerrada);
-        console.log('⚙️ Configuración cargada (puerta cerrada por defecto):', configConPuertaCerrada);
+        // 🔥 CONTROLES LIBRES: Mantener servoAbierto del Firebase para controles
+        setConfiguracion(config);
+        setConfigTemp(config);
+        console.log('⚙️ Configuración cargada (controles libres):', config);
       }
     });
 
@@ -783,7 +779,7 @@ function App() {
               <Edificio3D
                 piso1Alerta={alerta1}
                 piso2Alerta={alerta2}
-                puertaAbierta={configuracion.servoAbierto}
+                puertaAbierta={false}
                 buzzerPiso1={alerta1 && configuracion.buzzerPiso1Activo}
                 buzzerPiso2={alerta2 && configuracion.buzzerPiso2Activo}
                 ledPiso1={alerta1 && configuracion.ledPiso1Activo}

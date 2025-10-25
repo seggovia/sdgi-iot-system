@@ -953,12 +953,16 @@ void loop() {
 
   // Condiciones de deteccion para cada sensor
   bool cond1 = (ema > umbralOn);
-  bool cond2 = (!sensor2_fault) && (ema2 > umbralOn2);
+  // 🔥 SENSOR A3 SIMPLIFICADO: Siempre detecta cuando supera umbral
+  bool cond2 = (ema2 > umbralOn2);
   
-  // 🔥 FORZAR: Sensor A3 siempre detecte cuando supere umbral
-  if (ema2 > umbralOn2) {
-    cond2 = true;
-    Serial.println("🚨 SENSOR A3 FORZADO A DETECTAR - Valor alto detectado");
+  // 🔥 CONFIRMACIÓN: Mostrar cuando A3 detecta
+  if (cond2) {
+    static unsigned long ultimoMensajeA3 = 0;
+    if (ahora - ultimoMensajeA3 > 3000) {
+      Serial.println("🚨 SENSOR A3 DETECTANDO ANOMALÍA - BUZZER DEBERÍA SONAR");
+      ultimoMensajeA3 = ahora;
+    }
   }
   
   // 🔥 DIAGNOSTICO ESPECIFICO SENSOR A3 - MEJORADO
@@ -1024,8 +1028,8 @@ void loop() {
     }
   }
 
+  // 🔥 BUZZER A3 FORZADO: Siempre suena cuando detecta anomalía
   if (cond2 && !buzzersSilenciados) {
-    // BUZZER_A3 (Pin 3) - Buzzer PASIVO confirmado
     tone(BUZZER_A3, 4000);
     Serial.println("🚨 ALARMA INCENDIO - Buzzer PASIVO Pin 3 - 4000Hz");
   } else {
