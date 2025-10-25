@@ -4,6 +4,87 @@ import { OrbitControls, Text } from '@react-three/drei';
 import { db } from './firebase';
 import { ref, get, set, onValue, query, orderByKey, limitToLast } from 'firebase/database';
 import './Edificio3D.css';
+
+// Componente de humo 3D dentro del edificio
+function Humo3D({ activo, piso, posicionY }) {
+  const particulasRef = useRef([]);
+  
+  useFrame((state) => {
+    if (!activo) return;
+    
+    const time = state.clock.getElapsedTime();
+    
+    particulasRef.current.forEach((particula, index) => {
+      if (particula) {
+        // Movimiento ascendente más lento para mayor densidad
+        particula.position.y += 0.005;
+        
+        // Movimiento lateral controlado dentro del contorno del piso
+        const movimientoX = Math.sin(time * 0.3 + index) * 0.002;
+        const movimientoZ = Math.cos(time * 0.4 + index) * 0.002;
+        
+        // Aplicar movimiento solo si se mantiene dentro de los límites
+        const nuevaX = particula.position.x + movimientoX;
+        const nuevaZ = particula.position.z + movimientoZ;
+        
+        // Límites más dispersos del piso: X entre -1.75 y 1.75, Z entre -1.25 y 1.25
+        if (nuevaX >= -1.75 && nuevaX <= 1.75) {
+          particula.position.x = nuevaX;
+        }
+        if (nuevaZ >= -1.25 && nuevaZ <= 1.25) {
+          particula.position.z = nuevaZ;
+        }
+        
+        // Rotación más lenta
+        particula.rotation.y += 0.005;
+        
+        // Escalado más sutil
+        const escala = 1 + Math.sin(time * 1.5 + index) * 0.15;
+        particula.scale.setScalar(escala);
+        
+        // Opacidad que disminuye más gradualmente
+        const alturaRelativa = (particula.position.y - posicionY) / 0.8; // Solo altura del piso inferior
+        particula.material.opacity = Math.max(0.2, 1 - alturaRelativa * 0.6);
+        
+        // Resetear cuando sube mucho, manteniendo a la altura del piso
+        if (particula.position.y > posicionY + 0.8) {
+          particula.position.y = posicionY;
+          particula.position.x = (Math.random() - 0.5) * 3.5; // Más disperso horizontalmente
+          particula.position.z = (Math.random() - 0.5) * 2.5; // Más disperso en profundidad
+        }
+      }
+    });
+  });
+
+  if (!activo) return null;
+
+  return (
+    <group position={[0, posicionY, 0]}>
+      {/* Partículas de humo densas dentro del piso */}
+      {[...Array(60)].map((_, i) => (
+        <mesh
+          key={`humo-${piso}-${i}`}
+          ref={(el) => (particulasRef.current[i] = el)}
+          position={[
+            (Math.random() - 0.5) * 3.5, // Más disperso horizontalmente (-1.75 a 1.75)
+            Math.random() * 0.8, // Solo en la parte inferior del piso (0 a 0.8)
+            (Math.random() - 0.5) * 2.5 // Más disperso en profundidad (-1.25 a 1.25)
+          ]}
+        >
+          <sphereGeometry args={[0.08 + Math.random() * 0.15, 8, 8]} />
+          <meshStandardMaterial
+            color="#666666"
+            transparent
+            opacity={0.7}
+            emissive="#333333"
+            emissiveIntensity={0.3}
+          />
+        </mesh>
+      ))}
+    </group>
+  );
+}
+
 // Componente del edificio
 function Edificio({ piso1Alerta, piso2Alerta, puertaAbierta, buzzerPiso1, buzzerPiso2, ledPiso1, ledPiso2, posiciones }) {
   const piso1Ref = useRef();
@@ -396,6 +477,22 @@ function Edificio({ piso1Alerta, piso2Alerta, puertaAbierta, buzzerPiso1, buzzer
           />
         )}
       </group>
+
+      {/* HUMO 3D DENTRO DEL EDIFICIO */}
+      {/* Humo Piso 1 */}
+      <Humo3D 
+        activo={piso1Alerta} 
+        piso="piso1"
+        posicionY={1}
+      />
+      
+      {/* Humo Piso 2 */}
+      <Humo3D 
+        activo={piso2Alerta} 
+        piso="piso2"
+        posicionY={2.8}
+      />
+
     </group>
   );
 }

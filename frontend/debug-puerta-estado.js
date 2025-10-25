@@ -64,3 +64,4 @@ async function verificarEstadoPuerta() {
 }
 
 verificarEstadoPuerta();
+
