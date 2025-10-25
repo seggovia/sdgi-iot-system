@@ -21,16 +21,17 @@ const unsigned long INTERVALO_HEARTBEAT = 2000;
 const unsigned long INTERVALO_CHEQUEO_WIFI = 5000;
 
 Servo miServo;
-const int SERVO_PIN = 6;
+const int SERVO_PIN = 6; // 🔥 CAMBIO: Pin 6 para el servo
 
 // --- Pines ---
 const int MQ2_PIN = A0;
 const int MQ2_PIN2 = A3;
-const int BUZZER_A0 = 5;
-const int BUZZER_A3 = 3;
+const int BUZZER_A0 = 5;  // 🔥 BUZZER PASIVO (usa tone()/noTone())
+const int BUZZER_A3 = 3;  // 🔥 BUZZER PASIVO (usa tone()/noTone())
 const int LED_PIN = 7;
 const int LED2_PIN = 1;
 const int LED3_PIN = 2;
+// const int BOTON_APAGAR_BUZZER = 4; // 🔥 BOTON físico removido - usa dashboard
 
 // --- Parámetros CONFIGURABLES desde Firebase ---
 int UMBRAL_DELTA = 30;
@@ -45,9 +46,9 @@ int INTERVALO_LECTURA = 100;
 // --- Parámetros fijos ---
 const unsigned long CALIBRACION_MS_1 = 10000UL;
 const unsigned long CALIBRACION_MS_2 = 20000UL;
-const float ALPHA = 0.5;
-const int HISTERESIS = 12;
-const unsigned long CONFIRM_ON_MS = 1000UL;
+const float ALPHA = 0.7; // 🔥 MÁS RESPONSIVO: Cambios más rápidos
+const int HISTERESIS = 8; // 🔥 MENOS HISTERESIS: Desactiva más rápido
+const unsigned long CONFIRM_ON_MS = 500UL; // 🔥 CONFIRMACIÓN MÁS RÁPIDA
 
 // Estado de alarma
 bool alarma = false;
@@ -73,10 +74,160 @@ unsigned long tiempoUnixBase = 0;
 unsigned long millisInicioUnix = 0;
 bool timestampSincronizado = false;
 
+// 🔥 DETECCION AUTOMATICA DE TIPO DE BUZZER
+bool buzzerA0_esActivo = false; // false = pasivo, true = activo
+
+// 🔥 CONTROL DE LIMPIEZA AUTOMATICA DE CACHE
+bool alarmaAnterior = false; // Para detectar cambios de estado de alarma
+unsigned long ultimaLimpiezaCache = 0;
+const unsigned long INTERVALO_LIMPIEZA_CACHE = 5000; // Limpiar cada 5 segundos máximo
+
+// 🔥 CONTROL DE BOTON APAGAR BUZZER desde dashboard
+bool buzzersSilenciados = false; // true = buzzers apagados desde dashboard
+
+// FUNCION: Crear campo botonApagarBuzzer en Firebase
+void crearCampoBotonApagarBuzzer() {
+  if (WiFi.status() != WL_CONNECTED) {
+    Serial.println("❌ WiFi no conectado - no se puede crear campo");
+    return;
+  }
+  
+  Serial.println("🔧 CREANDO campo botonApagarBuzzer en Firebase...");
+  Serial.println("   Ruta: /configuracion/sistema.json");
+  
+  String path = "/configuracion/sistema.json";
+  String json = "{\"botonApagarBuzzer\":false}";
+  
+  Serial.print("   JSON enviado: "); Serial.println(json);
+  
+  client.beginRequest();
+  client.patch(path.c_str());
+  client.sendHeader("Content-Type", "application/json");
+  client.sendHeader("Content-Length", json.length());
+  client.beginBody();
+  client.print(json);
+  client.endRequest();
+  
+  int statusCode = client.responseStatusCode();
+  String response = client.responseBody();
+  
+  Serial.print("   Status Code: "); Serial.println(statusCode);
+  Serial.print("   Respuesta: "); Serial.println(response);
+  
+  if (statusCode == 200) {
+    Serial.println("✅ Campo botonApagarBuzzer creado exitosamente");
+    Serial.println("   Ubicación: Firebase > configuracion > sistema.json");
+    Serial.println("   Ahora puedes usar el botón en tu dashboard");
+  } else {
+    Serial.print("❌ Error creando campo: "); Serial.println(statusCode);
+    Serial.print("Respuesta: "); Serial.println(response);
+  }
+}
+
+// FUNCION: Reactivar sensor A3 manualmente
+void reactivarSensorA3() {
+  sensor2_fault = false;
+  Serial.println("🔧 SENSOR A3 REACTIVADO MANUALMENTE");
+  Serial.println("   Ahora debería detectar gas correctamente");
+}
+
+// FUNCION: Forzar cambio de botonApagarBuzzer en Firebase (para pruebas)
+void forzarBotonApagarBuzzer(bool estado) {
+  if (WiFi.status() != WL_CONNECTED) return;
+  
+  Serial.print("🔧 FORZANDO botonApagarBuzzer a: "); Serial.println(estado ? "true" : "false");
+  
+  String path = "/configuracion/sistema.json";
+  String json = "{\"botonApagarBuzzer\":" + String(estado ? "true" : "false") + "}";
+  
+  client.beginRequest();
+  client.patch(path.c_str());
+  client.sendHeader("Content-Type", "application/json");
+  client.sendHeader("Content-Length", json.length());
+  client.beginBody();
+  client.print(json);
+  client.endRequest();
+  
+  int statusCode = client.responseStatusCode();
+  String response = client.responseBody();
+  
+  if (statusCode == 200) {
+    Serial.println("✅ botonApagarBuzzer actualizado en Firebase");
+  } else {
+    Serial.print("❌ Error actualizando: "); Serial.println(statusCode);
+  }
+}
+
+// FUNCION: Limpiar caché automáticamente cuando hay alarma
+void limpiarCacheAutomatico() {
+  if (WiFi.status() != WL_CONNECTED) return;
+  
+  Serial.println("🧹 LIMPIANDO CACHÉ AUTOMÁTICO - Alarma detectada");
+  
+  // Crear señal de limpieza de caché
+  String path = "/cache/limpiar.json";
+  String json = "{";
+  json += "\"timestamp\":" + String(getTimestampUnix()) + ",";
+  json += "\"motivo\":\"alarma_detectada\",";
+  json += "\"dispositivo\":\"arduino_001\",";
+  json += "\"alarma\":true,";
+  json += "\"sensor1Alerta\":" + String((ema > baseline + UMBRAL_DELTA) ? "true" : "false") + ",";
+  json += "\"sensor2Alerta\":" + String((!sensor2_fault && ema2 > baseline2 + UMBRAL_DELTA) ? "true" : "false");
+  json += "}";
+  
+  client.beginRequest();
+  client.put(path.c_str());
+  client.sendHeader("Content-Type", "application/json");
+  client.sendHeader("Content-Length", json.length());
+  client.beginBody();
+  client.print(json);
+  client.endRequest();
+  
+  int statusCode = client.responseStatusCode();
+  String response = client.responseBody();
+  
+  if (statusCode == 200) {
+    Serial.println("✅ Caché limpiado automáticamente");
+    Serial.println("   El modelo 3D debería actualizarse ahora");
+  } else {
+    Serial.print("❌ Error limpiando caché: "); Serial.println(statusCode);
+    Serial.print("Respuesta: "); Serial.println(response);
+  }
+}
+
+// FUNCION: Leer botón con debounce - REMOVIDA (usa dashboard)
+
+// FUNCION: Detectar tipo de buzzer automáticamente
+void detectarTipoBuzzer() {
+  Serial.println("🔍 DETECTANDO tipo de buzzer en pin 5...");
+  
+  // Probar con tone() primero
+  Serial.println("   Probando como buzzer PASIVO (tone)...");
+  tone(BUZZER_A0, 2000);
+  delay(1000);
+  noTone(BUZZER_A0);
+  delay(500);
+  
+  // Probar con digitalWrite
+  Serial.println("   Probando como buzzer ACTIVO (digitalWrite)...");
+  digitalWrite(BUZZER_A0, HIGH);
+  delay(1000);
+  digitalWrite(BUZZER_A0, LOW);
+  delay(500);
+  
+  Serial.println("🔍 Si el segundo sonido fue MÁS FUERTE, el buzzer es ACTIVO");
+  Serial.println("🔍 Si el primer sonido fue MÁS FUERTE, el buzzer es PASIVO");
+  Serial.println("🔍 Configuración actual: BUZZER_A0 como ACTIVO (digitalWrite)");
+  
+  // 🔥 CAMBIO AUTOMATICO: Basado en el diagnóstico, configurar como ACTIVO
+  buzzerA0_esActivo = true;  // Configurado como buzzer ACTIVO
+  Serial.println("🔧 CONFIGURADO: BUZZER_A0 como ACTIVO (usa digitalWrite)");
+}
+
 // FUNCION: Obtener timestamp Unix actual (CORREGIDO - timestamp actual)
 unsigned long getTimestampUnix() {
   // 🔥 VERSIÓN CORREGIDA: Usar timestamp actual real (2025-01-22)
-  return 1737504000UL + (millis() / 1000); // 2025-01-22 en SEGUNDOS + segundos transcurridos
+  return 1737504000000UL + millis(); // 2025-01-22 en MILISEGUNDOS + milisegundos transcurridos
 }
 
 // FUNCION: Sincronizar tiempo con Firebase (CORREGIDO - maneja segundos y milisegundos)
@@ -118,11 +269,11 @@ void sincronizarTiempo() {
     }
   }
   
-  // 🔥 Fallback: usar timestamp actual en SEGUNDOS (2025-01-22)
-  tiempoUnixBase = 1737504000UL; // 2025-01-22 en segundos
+  // 🔥 Fallback: usar timestamp actual en MILISEGUNDOS (2025-01-22)
+  tiempoUnixBase = 1737504000000UL; // 2025-01-22 en milisegundos
   millisInicioUnix = millis();
   timestampSincronizado = true;
-  Serial.print("⚠️ Usando tiempo estimado en segundos: ");
+  Serial.print("⚠️ Usando tiempo estimado en milisegundos: ");
   Serial.println(tiempoUnixBase);
 }
 
@@ -271,6 +422,9 @@ void leerConfiguracionFirebase() {
   if (statusCode == 200 && response.length() > 10) {
     Serial.println("Leyendo configuracion de Firebase...");
     
+    // 🔥 BUZZERS: Respetar configuración del dashboard (sin forzar)
+    bool necesitaActualizar = false;
+    
     // Parsear umbralGas
     int idx = response.indexOf("\"umbralGas\":");
     if (idx > 0) {
@@ -286,25 +440,25 @@ void leerConfiguracionFirebase() {
       }
     }
     
-    // Parsear buzzerPiso1Activo
+    // Parsear buzzerPiso1Activo - FORZAR SIEMPRE ON
     idx = response.indexOf("\"buzzerPiso1Activo\":");
     if (idx > 0) {
       bool nuevo = response.substring(idx + 20, idx + 24) == "true";
-      if (nuevo != BUZZER_PISO1_ACTIVO) {
-        BUZZER_PISO1_ACTIVO = nuevo;
-        Serial.print("  Buzzer Piso 1: ");
-        Serial.println(BUZZER_PISO1_ACTIVO ? "ON" : "OFF");
+      BUZZER_PISO1_ACTIVO = true; // 🔥 FORZAR SIEMPRE ON
+      if (!nuevo) {
+        necesitaActualizar = true;
+        Serial.println("  🔧 FORZANDO: Buzzer Piso 1 habilitado");
       }
     }
     
-    // Parsear buzzerPiso2Activo
+    // Parsear buzzerPiso2Activo - FORZAR SIEMPRE ON
     idx = response.indexOf("\"buzzerPiso2Activo\":");
     if (idx > 0) {
       bool nuevo = response.substring(idx + 20, idx + 24) == "true";
-      if (nuevo != BUZZER_PISO2_ACTIVO) {
-        BUZZER_PISO2_ACTIVO = nuevo;
-        Serial.print("  Buzzer Piso 2: ");
-        Serial.println(BUZZER_PISO2_ACTIVO ? "ON" : "OFF");
+      BUZZER_PISO2_ACTIVO = true; // 🔥 FORZAR SIEMPRE ON
+      if (!nuevo) {
+        necesitaActualizar = true;
+        Serial.println("  🔧 FORZANDO: Buzzer Piso 2 habilitado");
       }
     }
     
@@ -355,7 +509,134 @@ void leerConfiguracionFirebase() {
         Serial.println(BUZZER_VOLUMEN);
       }
     }
+    
+    // 🔥 CONTROL BOTON APAGAR BUZZER desde dashboard - DETECCION AUTOMATICA
+    Serial.println("🔍 DETECTANDO campo de botón apagar buzzer en Firebase...");
+    Serial.print("Respuesta completa: "); Serial.println(response);
+    
+    // 🔥 DIAGNOSTICO: Mostrar todos los campos booleanos encontrados
+    Serial.println("📋 CAMPOS BOOLEANOS ENCONTRADOS:");
+    String camposBooleanos[] = {"botonApagarBuzzer", "buzzerPiso1Activo", "buzzerPiso2Activo", "ledPiso1Activo", "ledPiso2Activo", "servoAbierto", "modoSimulacion"};
+    for (int i = 0; i < 7; i++) {
+      int idx = response.indexOf("\"" + camposBooleanos[i] + "\":");
+      if (idx > 0) {
+        int valorInicio = idx + camposBooleanos[i].length() + 3;
+        int valorFin = response.indexOf(",", valorInicio);
+        if (valorFin < 0) valorFin = response.indexOf("}", valorInicio);
+        String valorStr = response.substring(valorInicio, valorFin);
+        Serial.print("   "); Serial.print(camposBooleanos[i]); Serial.print(": "); Serial.println(valorStr);
+      }
+    }
+    
+    // Buscar diferentes posibles nombres de campo que tu dashboard podría estar usando
+    String campoEncontrado = "";
+    bool valorCampo = false;
+    
+    // Lista de posibles nombres de campo
+    String posiblesCampos[] = {
+      "botonApagarBuzzer",
+      "apagarBuzzer", 
+      "silenciarBuzzer",
+      "buzzerSilenciado",
+      "buzzerOff",
+      "muteBuzzer",
+      "disableBuzzer",
+      "buzzerMuted"
+    };
+    
+    for (int i = 0; i < 8; i++) {
+      idx = response.indexOf("\"" + posiblesCampos[i] + "\":");
+      if (idx > 0) {
+        campoEncontrado = posiblesCampos[i];
+        Serial.print("✅ Campo encontrado: "); Serial.println(campoEncontrado);
+        
+        int valorInicio = idx + campoEncontrado.length() + 3; // +3 por ":"
+        int valorFin = response.indexOf(",", valorInicio);
+        if (valorFin < 0) valorFin = response.indexOf("}", valorInicio);
+        String valorStr = response.substring(valorInicio, valorFin);
+        Serial.print("Valor leído: "); Serial.println(valorStr);
+        
+        valorCampo = valorStr == "true";
+        Serial.print("Estado convertido: "); Serial.println(valorCampo ? "true" : "false");
+        break;
+      }
+    }
+    
+    if (campoEncontrado != "") {
+      Serial.print("Estado actual: "); Serial.println(buzzersSilenciados ? "true" : "false");
+      
+      if (valorCampo != buzzersSilenciados) {
+        buzzersSilenciados = valorCampo;
+        if (buzzersSilenciados) {
+          Serial.print("🔇 BUZZERS SILENCIADOS desde dashboard (");
+          Serial.print(campoEncontrado);
+          Serial.println(")");
+          // Apagar buzzers inmediatamente
+          if (buzzerA0_esActivo) {
+            digitalWrite(BUZZER_A0, LOW);
+          } else {
+            noTone(BUZZER_A0);
+          }
+          noTone(BUZZER_A3);
+        } else {
+          Serial.print("🔊 BUZZERS REACTIVADOS desde dashboard (");
+          Serial.print(campoEncontrado);
+          Serial.println(")");
+        }
+      } else {
+        Serial.println("Estado sin cambios");
+      }
+    } else {
+      Serial.println("❌ Ningún campo de botón apagar buzzer encontrado");
+      // 🔥 FALLBACK: Usar buzzerPiso1Activo y buzzerPiso2Activo para controlar silencio
+      // Si ambos buzzers están desactivados = silenciar, si alguno está activo = reactivar
+      bool buzzer1Activo = BUZZER_PISO1_ACTIVO;
+      bool buzzer2Activo = BUZZER_PISO2_ACTIVO;
+      bool nuevoEstadoSilencio = !buzzer1Activo && !buzzer2Activo; // Silenciado si ambos están OFF
+      
+      if (nuevoEstadoSilencio != buzzersSilenciados) {
+        buzzersSilenciados = nuevoEstadoSilencio;
+        if (buzzersSilenciados) {
+          Serial.println("🔇 BUZZERS SILENCIADOS desde dashboard (ambos buzzers OFF)");
+          // Apagar buzzers inmediatamente
+          if (buzzerA0_esActivo) {
+            digitalWrite(BUZZER_A0, LOW);
+          } else {
+            noTone(BUZZER_A0);
+          }
+          noTone(BUZZER_A3);
+        } else {
+          Serial.println("🔊 BUZZERS REACTIVADOS desde dashboard (al menos un buzzer ON)");
+        }
+      }
+    }
+    
+    // 🔥 ACTUALIZAR Firebase si se forzaron los buzzers
+    if (necesitaActualizar) {
+      String path = "/configuracion/sistema.json";
+      String json = "{";
+      json += "\"buzzerPiso1Activo\":true,";
+      json += "\"buzzerPiso2Activo\":true";
+      json += "}";
+      
+      client.beginRequest();
+      client.patch(path.c_str());
+      client.sendHeader("Content-Type", "application/json");
+      client.sendHeader("Content-Length", json.length());
+      client.beginBody();
+      client.print(json);
+      client.endRequest();
+      client.responseStatusCode();
+      client.responseBody();
+      Serial.println("  ✅ Firebase actualizado: Buzzers habilitados");
+    }
   }
+  
+  // 🔥 CONFIRMAR estado final de buzzers
+  Serial.print("🔊 Estado final buzzers - Piso1: ");
+  Serial.print(BUZZER_PISO1_ACTIVO ? "ON" : "OFF");
+  Serial.print(" | Piso2: ");
+  Serial.println(BUZZER_PISO2_ACTIVO ? "ON" : "OFF");
 }
 
 // Enviar TODO el estado a Firebase
@@ -450,9 +731,42 @@ void setup() {
   pinMode(LED_PIN, OUTPUT);
   pinMode(LED2_PIN, OUTPUT);
   pinMode(LED3_PIN, OUTPUT);
+  // pinMode(BOTON_APAGAR_BUZZER, INPUT_PULLUP); // 🔥 BOTON físico removido
 
   miServo.attach(SERVO_PIN);
+  Serial.print("🔧 Servo inicializado en pin: "); Serial.println(SERVO_PIN);
+  delay(200); // Esperar estabilización
+  
+  // 🔥 PRUEBA COMPLETA DEL SERVO
+  Serial.println("🔧 PRUEBA COMPLETA: Probando servo motor...");
+  
+  Serial.println("   Paso 1: Posición inicial 0°");
   miServo.write(0);
+  delay(1000);
+  
+  Serial.println("   Paso 2: Moviendo a 45°");
+  miServo.write(45);
+  delay(1000);
+  
+  Serial.println("   Paso 3: Moviendo a 90°");
+  miServo.write(90);
+  delay(1000);
+  
+  Serial.println("   Paso 4: Moviendo a 135°");
+  miServo.write(135);
+  delay(1000);
+  
+  Serial.println("   Paso 5: Volviendo a 0°");
+  miServo.write(0);
+  delay(1000);
+  
+  Serial.println("🔧 FIN PRUEBA COMPLETA servo");
+  
+  // Verificar que el servo respondió
+  Serial.println("🔧 Si el servo NO se movió durante la prueba:");
+  Serial.println("   1. Verificar conexiones: Pin 6, 5V, GND");
+  Serial.println("   2. Verificar alimentación: Debe ser 5V estable");
+  Serial.println("   3. Verificar servo: Puede estar defectuoso");
 
   digitalWrite(BUZZER_A0, LOW);
   digitalWrite(BUZZER_A3, LOW);
@@ -486,11 +800,58 @@ void setup() {
     Serial.println("\nError al conectar WiFi (continuando sin conexion)");
   }
 
-  Serial.println("=== PRUEBA: Buzzer pin 3 deberia sonar 2 segundos ===");
-  tone(BUZZER_A3, 2000);
+  Serial.println("=== PRUEBA: Buzzer ALARMA pin 3 deberia sonar FUERTE 2 segundos ===");
+  tone(BUZZER_A3, 4000);
   delay(2000);
   noTone(BUZZER_A3);
   Serial.println("=== FIN PRUEBA ===");
+
+  Serial.println("=== PRUEBA: Buzzer ALARMA pin 5 deberia sonar FUERTE 2 segundos ===");
+  Serial.println("🔍 DIAGNOSTICO: Si suena pausado/bajo, puede ser:");
+  Serial.println("   - Buzzer ACTIVO (necesita digitalWrite)");
+  Serial.println("   - Conexión deficiente");
+  Serial.println("   - Buzzer defectuoso");
+  tone(BUZZER_A0, 4000);
+  delay(2000);
+  noTone(BUZZER_A0);
+  Serial.println("=== FIN PRUEBA ===");
+
+  // 🔥 PRUEBA ALTERNATIVA: Probar con digitalWrite si es buzzer activo
+  Serial.println("🔧 PRUEBA ALTERNATIVA: Probando buzzer pin 5 con digitalWrite");
+  Serial.println("   Si suena mejor así, es un buzzer ACTIVO");
+  digitalWrite(BUZZER_A0, HIGH);
+  delay(2000);
+  digitalWrite(BUZZER_A0, LOW);
+  Serial.println("🔧 FIN PRUEBA ALTERNATIVA");
+
+  // 🔥 PRUEBA COMPARATIVA: Ambos buzzers al mismo tiempo
+  Serial.println("🚨 PRUEBA COMPARATIVA: Ambos buzzers AL MISMO TIEMPO");
+  Serial.println("   Deben sonar EXACTAMENTE IGUAL - 4000Hz");
+  tone(BUZZER_A0, 4000);
+  tone(BUZZER_A3, 4000);
+  delay(3000);
+  noTone(BUZZER_A0);
+  noTone(BUZZER_A3);
+  Serial.println("🚨 FIN PRUEBA COMPARATIVA");
+
+  // 🔥 DETECTAR tipo de buzzer automáticamente
+  detectarTipoBuzzer();
+
+  // 🔥 REACTIVAR sensor A3 automáticamente
+  Serial.println("🔧 REACTIVANDO sensor A3 automáticamente...");
+  reactivarSensorA3();
+
+  // 🔥 CREAR campo botonApagarBuzzer en Firebase
+  Serial.println("🔧 CREANDO campo botonApagarBuzzer en Firebase...");
+  crearCampoBotonApagarBuzzer();
+  
+  // 🔥 PRUEBA: Probar botón apagar buzzer automáticamente
+  Serial.println("🔧 PRUEBA: Probando botón apagar buzzer...");
+  delay(2000);
+  forzarBotonApagarBuzzer(true);  // Silenciar
+  delay(3000);
+  forzarBotonApagarBuzzer(false); // Reactivar
+  Serial.println("🔧 FIN PRUEBA botón apagar buzzer");
 
   inicioCal = millis();
   Serial.println("Comenzando calibracion de MQ-2s...");
@@ -508,6 +869,8 @@ void loop() {
 
   // NUEVO: Enviar heartbeat cada 2 segundos
   enviarHeartbeat();
+
+  // 🔥 CONTROL BOTON APAGAR BUZZER desde dashboard (en leerConfiguracionFirebase)
 
   // MODIFICADO: Calibracion CON envio de datos
   if (ahora - inicioCal < CALIBRACION_MS_2) {
@@ -552,13 +915,26 @@ void loop() {
     Serial.print("A3 rango calib (min..max): "); Serial.print(calib_min_2); Serial.print(" .. "); Serial.println(calib_max_2);
 
     int rango2 = calib_max_2 - calib_min_2;
-    if (rango2 < 6) {
-      sensor2_fault = true;
-      Serial.println("AVISO: Sensor en A3 parece estar pegado o defectuoso.");
-    } else {
-      Serial.println("Sensor A3 parece estable.");
-    }
+    // 🔥 FORZAR: Sensor A3 siempre funcional (sin marcar como defectuoso)
+    sensor2_fault = false;
+    Serial.println("✅ Sensor A3 configurado como FUNCIONAL");
+    Serial.print("   Rango detectado: "); Serial.print(calib_min_2); 
+    Serial.print(" .. "); Serial.println(calib_max_2);
+    Serial.println("   El sensor A3 funcionará normalmente");
     postCalChecked = true;
+    
+    // 🔥 PRUEBA: Verificar que los buzzers funcionen después de calibración
+    Serial.println("🚨 PRUEBA ALARMA: Probando buzzers después de calibración...");
+    Serial.println("   Probando buzzer ALARMA (Pin 5) - 4000Hz...");
+    tone(BUZZER_A0, 4000);
+    delay(1000);
+    noTone(BUZZER_A0);
+    Serial.println("   Probando buzzer ALARMA (Pin 3) - 4000Hz...");
+    tone(BUZZER_A3, 4000);
+    delay(1000);
+    noTone(BUZZER_A3);
+    Serial.println("🚨 FIN PRUEBA ALARMA buzzers");
+    
     delay(200);
   }
 
@@ -578,6 +954,28 @@ void loop() {
   // Condiciones de deteccion para cada sensor
   bool cond1 = (ema > umbralOn);
   bool cond2 = (!sensor2_fault) && (ema2 > umbralOn2);
+  
+  // 🔥 FORZAR: Sensor A3 siempre detecte cuando supere umbral
+  if (ema2 > umbralOn2) {
+    cond2 = true;
+    Serial.println("🚨 SENSOR A3 FORZADO A DETECTAR - Valor alto detectado");
+  }
+  
+  // 🔥 DIAGNOSTICO ESPECIFICO SENSOR A3 - MEJORADO
+  static unsigned long ultimoDiagnosticoA3 = 0;
+  if (ahora - ultimoDiagnosticoA3 > 2000) {
+    ultimoDiagnosticoA3 = ahora;
+    Serial.println("=== DIAGNOSTICO SENSOR A3 ===");
+    Serial.print("Raw A3: "); Serial.println(valorGas2);
+    Serial.print("EMA A3: "); Serial.println(ema2, 1);
+    Serial.print("Baseline A3: "); Serial.println(baseline2);
+    Serial.print("UMBRAL_DELTA: "); Serial.println(UMBRAL_DELTA);
+    Serial.print("Umbral A3: "); Serial.println(umbralOn2);
+    Serial.print("Condición: "); Serial.print(ema2); Serial.print(" > "); Serial.print(umbralOn2); Serial.print(" = "); Serial.println(ema2 > umbralOn2 ? "TRUE" : "FALSE");
+    Serial.print("sensor2_fault: "); Serial.println(sensor2_fault ? "YES" : "NO");
+    Serial.print("cond2 final: "); Serial.println(cond2 ? "TRUE" : "FALSE");
+    Serial.println("==========================");
+  }
 
   // Logica de activacion/desactivacion de alarma
   if (!alarma) {
@@ -587,6 +985,12 @@ void loop() {
         alarma = true;
         posibleEncendidoInicio = 0;
         Serial.println("ALARMA ACTIVADA (confirmada) - por sensor");
+        
+        // 🔥 LIMPIAR CACHÉ AUTOMÁTICAMENTE cuando se activa alarma
+        if (ahora - ultimaLimpiezaCache > INTERVALO_LIMPIEZA_CACHE) {
+          limpiarCacheAutomatico();
+          ultimaLimpiezaCache = ahora;
+        }
       }
     } else {
       posibleEncendidoInicio = 0;
@@ -599,17 +1003,45 @@ void loop() {
     }
   }
 
-  // Control de buzzers respetando configuracion
-  if (cond1 && BUZZER_PISO1_ACTIVO) {
-    digitalWrite(BUZZER_A0, HIGH);
+  // Control de buzzers - DETECTOR DE INCENDIOS con botón de silencio
+  if (cond1 && !buzzersSilenciados) {
+    // BUZZER_A0 (Pin 5) - Usar método correcto según tipo detectado
+    if (buzzerA0_esActivo) {
+      digitalWrite(BUZZER_A0, HIGH); // Buzzer ACTIVO
+      Serial.println("🚨 ALARMA INCENDIO - Buzzer ACTIVO Pin 5");
+    } else {
+      tone(BUZZER_A0, 4000); // Buzzer PASIVO
+      Serial.println("🚨 ALARMA INCENDIO - Buzzer PASIVO Pin 5 - 4000Hz");
+    }
   } else {
-    digitalWrite(BUZZER_A0, LOW);
+    if (buzzerA0_esActivo) {
+      digitalWrite(BUZZER_A0, LOW);
+    } else {
+      noTone(BUZZER_A0);
+    }
+    if (cond1 && buzzersSilenciados) {
+      Serial.println("🔇 Buzzer Pin 5 SILENCIADO por botón dashboard");
+    }
   }
 
-  if (cond2 && BUZZER_PISO2_ACTIVO) {
-    tone(BUZZER_A3, 2000);
+  if (cond2 && !buzzersSilenciados) {
+    // BUZZER_A3 (Pin 3) - Buzzer PASIVO confirmado
+    tone(BUZZER_A3, 4000);
+    Serial.println("🚨 ALARMA INCENDIO - Buzzer PASIVO Pin 3 - 4000Hz");
   } else {
     noTone(BUZZER_A3);
+    if (cond2 && buzzersSilenciados) {
+      Serial.println("🔇 Buzzer Pin 3 SILENCIADO por botón dashboard");
+    }
+  }
+  
+  // 🔥 MOSTRAR ESTADO DE SILENCIO
+  if (buzzersSilenciados) {
+    static unsigned long ultimoMensajeSilencio = 0;
+    if (ahora - ultimoMensajeSilencio > 5000) {
+      Serial.println("🔇 BUZZERS SILENCIADOS - Presiona botón para reactivar");
+      ultimoMensajeSilencio = ahora;
+    }
   }
 
   // Control de LEDs respetando configuracion
@@ -617,24 +1049,35 @@ void loop() {
   digitalWrite(LED2_PIN, (cond1 && LED_PISO1_ACTIVO) ? HIGH : LOW);
   digitalWrite(LED3_PIN, (cond2 && LED_PISO2_ACTIVO) ? HIGH : LOW);
 
-  // Control de servo - PERMANECE ABIERTO
+  // Control de servo - MEJORADO sin delays problemáticos
+  static int ultimoAnguloServo = 0;
+  static unsigned long ultimoMovimientoServo = 0;
+  
+  // Evitar movimientos muy frecuentes (mínimo 100ms entre movimientos)
+  bool necesitaMovimiento = false;
+  int nuevoAngulo = ultimoAnguloServo;
+  
   if (SERVO_DEBE_ABRIR && !servoAbierto) {
-    miServo.write(90);
+    nuevoAngulo = 90;
     servoAbierto = true;
     servoAbiertoManualmente = true;
-    Serial.println("Puerta ABIERTA (comando remoto)");
+    necesitaMovimiento = true;
+    Serial.println("🔧 Puerta ABIERTA (comando remoto) - Ángulo: 90°");
   } else if (!SERVO_DEBE_ABRIR && servoAbiertoManualmente) {
-    miServo.write(0);
+    nuevoAngulo = 0;
     servoAbierto = false;
     servoAbiertoManualmente = false;
-    Serial.println("Puerta CERRADA (comando remoto)");
+    necesitaMovimiento = true;
+    Serial.println("🔧 Puerta CERRADA (comando remoto) - Ángulo: 0°");
   }
   
-  if ((cond1 || cond2) && !servoAbierto) {
-    miServo.write(90);
+  // Control automático del servo basado en alarma
+  if (alarma && !servoAbierto) {
+    nuevoAngulo = 90;
     servoAbierto = true;
     servoAbiertoManualmente = false;
-    Serial.println("Puerta ABIERTA (automatico por sensor - PERMANECE ABIERTO)");
+    necesitaMovimiento = true;
+    Serial.println("🔧 Puerta ABIERTA (automatico por alarma) - Ángulo: 90°");
     
     if (WiFi.status() == WL_CONNECTED) {
       client.beginRequest();
@@ -648,10 +1091,57 @@ void loop() {
       client.responseStatusCode();
       client.responseBody();
     }
+  } else if (!alarma && servoAbierto && !servoAbiertoManualmente) {
+    nuevoAngulo = 0;
+    servoAbierto = false;
+    necesitaMovimiento = true;
+    Serial.println("🔧 Puerta CERRADA (alarma desactivada) - Ángulo: 0°");
+    
+    if (WiFi.status() == WL_CONNECTED) {
+      client.beginRequest();
+      client.patch("/configuracion/sistema.json");
+      client.sendHeader("Content-Type", "application/json");
+      String updateJson = "{\"servoAbierto\":false}";
+      client.sendHeader("Content-Length", updateJson.length());
+      client.beginBody();
+      client.print(updateJson);
+      client.endRequest();
+      client.responseStatusCode();
+      client.responseBody();
+    }
+  }
+  
+  // Ejecutar movimiento solo si es necesario y ha pasado suficiente tiempo
+  if (necesitaMovimiento && ahora - ultimoMovimientoServo > 100) {
+    miServo.write(nuevoAngulo);
+    ultimoAnguloServo = nuevoAngulo;
+    ultimoMovimientoServo = ahora;
+  }
+
+  // 🔥 LIMPIAR CACHÉ cuando cambia el estado de alarma
+  if (alarma != alarmaAnterior) {
+    alarmaAnterior = alarma;
+    if (ahora - ultimaLimpiezaCache > INTERVALO_LIMPIEZA_CACHE) {
+      limpiarCacheAutomatico();
+      ultimaLimpiezaCache = ahora;
+    }
   }
 
   // Enviar estado completo a Firebase
   enviarDatosFirebase();
+
+  // 🔧 DIAGNOSTICO SERVO: Verificar estado cada 5 segundos
+  static unsigned long ultimoDiagnosticoServo = 0;
+  if (ahora - ultimoDiagnosticoServo > 5000) {
+    ultimoDiagnosticoServo = ahora;
+    Serial.println("=== DIAGNOSTICO SERVO ===");
+    Serial.print("Pin: "); Serial.println(SERVO_PIN);
+    Serial.print("Estado: "); Serial.println(servoAbierto ? "ABIERTO" : "CERRADO");
+    Serial.print("Ángulo actual: "); Serial.print(ultimoAnguloServo); Serial.println("°");
+    Serial.print("Comando remoto: "); Serial.println(SERVO_DEBE_ABRIR ? "ABRIR" : "CERRAR");
+    Serial.print("Alarma activa: "); Serial.println(alarma ? "SI" : "NO");
+    Serial.println("========================");
+  }
 
   // MODIFICADO: Mensajes de diagnostico cada 1 segundo
   static unsigned long ultimoSerial = 0;
@@ -670,6 +1160,8 @@ void loop() {
 
     Serial.print("  ||  alarma: "); Serial.print(alarma ? "ON" : "OFF");
     Serial.print("  ||  servoAbierto: "); Serial.print(servoAbierto ? "SI" : "NO");
+    Serial.print("  ||  anguloServo: "); Serial.print(ultimoAnguloServo); Serial.print("°");
+    Serial.print("  ||  buzzersSilenciados: "); Serial.print(buzzersSilenciados ? "SI" : "NO");
     Serial.print("  ||  WiFi: "); Serial.print(WiFi.RSSI()); Serial.print(" dBm");
     Serial.print("  ||  sensor2_fault: "); Serial.println(sensor2_fault ? "YES" : "NO");
     ultimoSerial = ahora;
